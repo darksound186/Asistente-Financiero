@@ -11,14 +11,14 @@ function getGeminiKey() {
   return localStorage.getItem('gemini_api_key') || '';
 }
 
-async function loadState(){
+function loadState(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
     if(raw) state = JSON.parse(raw);
   }catch(e){ state = null; }
 }
 
-async function saveState(){
+function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
   catch(e){ console.error('No se pudo guardar', e); }
 }
@@ -56,10 +56,11 @@ function extraPoolTotal(period, cp){
 }
 
 function normalizePeriod(cp){
-  if(!cp.spent) cp.spent = {fijos:0,libre:0};
+  if(!cp.spent) cp.spent = {fijos:0,libre:0,extra:0};
   if(typeof cp.spent.extra !== 'number') cp.spent.extra = 0;
   if(!cp.extraExpenses) cp.extraExpenses = [];
   if(!cp.incomes) cp.incomes = [];
+  if(!cp.expenses) cp.expenses = [];
 }
 
 function getAllocations(){
@@ -95,29 +96,16 @@ function archiveIfNeeded(period){
   }
 }
 
-function switchMobileTab(tabName) {
-  currentTab = tabName;
-  document.querySelectorAll('.mobile-nav-item').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('onclick').includes(tabName));
-  });
-  render();
-}
-
-function abrirModalGastoRapido() {
-  currentTab = 'dashboard';
-  render();
-  const expAmount = document.getElementById('expAmount');
-  if (expAmount) expAmount.focus();
-}
-
 function render(){
   const app = document.getElementById('app');
   const loading = document.getElementById('loading');
-  if(loading) loading.classList.add('hidden');
-  if(app) app.classList.remove('hidden');
+  
+  if(loading) loading.style.display = 'none';
+  if(app) app.style.display = 'block';
 
   if(!state){ if(app) app.innerHTML = renderSetup(null); bindSetup(); return; }
   if(!state.loans) state.loans = [];
+  if(!state.goals) state.goals = [];
 
   const today = new Date();
   const period = computePeriod(today, state.payDay, state.payFrequency||'quincenal');
@@ -134,7 +122,7 @@ function render(){
       <button class="tab ${currentTab==='extra'?'active':''}" data-tab="extra">Sin comprometer</button>
       <button class="tab ${currentTab==='loans'?'active':''}" data-tab="loans">🤝 Préstamos</button>
       <button class="tab ${currentTab==='assistant'?'active':''}" data-tab="assistant">🤖 Asistente</button>
-      <button class="tab ${currentTab==='goals'?'active':''}" data-tab="goals">Metas</button>
+      <button class="tab ${currentTab==='goals'?'active':''}" data-tab="goals">🎯 Metas</button>
       <button class="tab ${currentTab==='settings'?'active':''}" data-tab="settings">⚙️ Ajustes</button>
     </div>
     <div id="tabContent"></div>
@@ -216,7 +204,7 @@ function bindSetup(){
     if(!wasSetUp){
       state.history = []; 
       state.currentPeriod = null;
-      state.goals = [{id:'seed-1', name:'Fondo de emergencia', target:800000, saved:0, date:''}];
+      state.goals = [{id:'seed-1', name:'Fondo de emergencia', target:800000, saved:0}];
     }
 
     saveState();
@@ -245,7 +233,7 @@ function renderDashboard(period){
 
   const movesHtml = (cp.expenses && cp.expenses.length) ? cp.expenses.slice().reverse().map(e => `
     <li>
-      <span>${e.note ? e.note : e.category}<span class="tag">${e.category}</span></span>
+      <span>${e.note ? escapeHtml(e.note) : e.category}<span class="tag">${e.category}</span></span>
       <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button class="del" data-id="${e.id}">✕</button></span>
     </li>
   `).join('') : '<div class="empty">Sin movimientos todavía en este período.</div>';
@@ -267,7 +255,6 @@ function renderDashboard(period){
       <b>${fmt(ingresoTotal)}</b>
     </div>
 
-    <!-- Sección para Registrar Ingresos Extras -->
     <div class="panel" style="margin-bottom: 16px;">
       <h2>💰 Registrar Ingreso Extra</h2>
       <div class="expense-form">
@@ -322,7 +309,6 @@ function bindDashboard(){
     });
   }
 
-  // Lógica para registrar Ingreso Extra
   document.getElementById('addIncome')?.addEventListener('click', ()=>{
     const amount = Number(document.getElementById('incAmount').value);
     const note = document.getElementById('incNote').value.trim();
@@ -396,7 +382,7 @@ function renderExtra(period){
 }
 
 function bindExtra(period){
-  document.getElementById('addExtra')?.addEventListener('click', async ()=>{
+  document.getElementById('addExtra')?.addEventListener('click', ()=>{
     const amount = Number(document.getElementById('extraAmount').value);
     const note = document.getElementById('extraNote').value.trim();
     if(!amount || amount<=0) return;
@@ -407,7 +393,7 @@ function bindExtra(period){
     cp.extraExpenses.push({id, amount, note});
     cp.spent.extra += amount;
 
-    await saveState();
+    saveState();
     render();
   });
 }
@@ -415,7 +401,7 @@ function bindExtra(period){
 function renderLoans(){
   const loansHtml = (state.loans && state.loans.length) ? state.loans.map(l => `
     <li>
-      <span><b>${l.person}</b> - Pendiente: ${fmt(l.pending)}</span>
+      <span><b>${escapeHtml(l.person)}</b> - Pendiente: ${fmt(l.pending)}</span>
       <span class="tag">${l.status}</span>
     </li>
   `).join('') : '<div class="empty">No tienes préstamos registrados.</div>';
@@ -434,13 +420,13 @@ function renderLoans(){
 }
 
 function bindLoans(){
-  document.getElementById('addLoan')?.addEventListener('click', async ()=>{
+  document.getElementById('addLoan')?.addEventListener('click', ()=>{
     const person = document.getElementById('loanPerson').value.trim();
     const amount = Number(document.getElementById('loanAmount').value);
     if(!person || !amount || amount<=0) return;
 
     state.loans.push({id: Date.now().toString(36), person, original:amount, returned:0, pending:amount, status:'Pendiente'});
-    await saveState();
+    saveState();
     render();
   });
 }
@@ -490,9 +476,23 @@ OTRO DETALLE:
 - Préstamos pendientes por cobrar: ${prestamosActivos}
 - Últimos gastos registrados:
 ${ultimosGastos}
-
-Analiza este contexto financiero completo para responder a las preguntas del usuario y darle buenas sugerencias.
 `;
+}
+
+function renderAssistant(period){
+  return `
+    <div class="panel">
+      <h2>Asistente Financiero IA</h2>
+      <div class="sub">Analizando en tiempo real tu estado financiero del período.</div>
+      <div class="chat-log" id="chatLog">
+        <div class="bubble bot">¡Hola! Analicé tus finanzas de este período. ¿En qué te puedo ayudar hoy?</div>
+      </div>
+      <div class="chat-input">
+        <input type="text" id="chatInput" placeholder="Ej: ¿Cuánto dinero me queda libre para salir?">
+        <button id="chatSendBtn">Enviar</button>
+      </div>
+    </div>
+  `;
 }
 
 function bindAssistant(period){
@@ -534,7 +534,7 @@ function bindAssistant(period){
       });
 
       if (!response.ok) {
-        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${apiKey}`, {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -569,11 +569,6 @@ function bindAssistant(period){
     if (e.key === 'Enter') handleSend();
   });
 }
-function escapeHtml(str) {
-  return str.replace(/[&<>"']/g, function(m) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
-  });
-}
 
 function renderGoals(){
   if (!state.goals) state.goals = [];
@@ -582,7 +577,7 @@ function renderGoals(){
     const pct = Math.min(100, Math.round((g.saved / Math.max(1, g.target)) * 100));
     return `
       <div class="panel" style="margin-bottom: 12px;">
-        <div style="display:flex; justify-between; align-items:center; margin-bottom: 8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
           <b style="font-size: 1.1rem;">🎯 ${escapeHtml(g.name)}</b>
           <button class="del" data-goal-del="${g.id}">✕</button>
         </div>
@@ -614,7 +609,6 @@ function renderGoals(){
 }
 
 function bindGoals(){
-  // Crear Meta
   document.getElementById('addGoalBtn')?.addEventListener('click', ()=>{
     const name = document.getElementById('goalName').value.trim();
     const target = Number(document.getElementById('goalTarget').value);
@@ -632,7 +626,6 @@ function bindGoals(){
     render();
   });
 
-  // Abonar a Meta
   document.querySelectorAll('[data-goal-add]').forEach(btn => {
     btn.addEventListener('click', ()=>{
       const id = btn.getAttribute('data-goal-add');
@@ -649,7 +642,6 @@ function bindGoals(){
     });
   });
 
-  // Eliminar Meta
   document.querySelectorAll('[data-goal-del]').forEach(btn => {
     btn.addEventListener('click', ()=>{
       const id = btn.getAttribute('data-goal-del');
@@ -658,4 +650,21 @@ function bindGoals(){
       render();
     });
   });
+}
+
+function escapeHtml(str) {
+  return String(str||'').replace(/[&<>"']/g, function(m) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+  });
+}
+
+function initApp() {
+  loadState();
+  render();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
 }
