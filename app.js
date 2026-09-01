@@ -510,8 +510,8 @@ function bindAssistant(period){
     try {
       const systemContext = buildFinancialContext(period);
 
-      // Usando el modelo compatible gemini-1.5-flash
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      // Usando gemini-2.0-flash (compatible con v1beta)
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -532,7 +532,7 @@ function bindAssistant(period){
       if (!response.ok) {
         console.error('Error API Gemini:', data);
         if (loadingEl) {
-          loadingEl.textContent = `Error API (${response.status}): ${data.error?.message || 'Revisa tu API Key en Ajustes'}`;
+          loadingEl.textContent = `Error API (${response.status}): ${data.error?.message || 'Modelo no disponible o API Key inválida.'}`;
         }
         return;
       }
