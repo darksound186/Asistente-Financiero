@@ -2,120 +2,125 @@
 <html lang="es">
 <head>
   <!-- Metadatos PWA e iOS -->
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0f172a">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Finanzas">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="manifest" href="./manifest.webmanifest">
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Control Quincenal</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Finanzas">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta charset="UTF-8">
+  <title>Control Quincenal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
-<div class="wrap">
-  <div class="eyebrow">Control financiero</div>
-  <h1 id="mainTitle">Quincena en curso</h1>
-  <div class="sub">Tu plan, en pesos reales — sin porcentajes genéricos.</div>
-  <div id="loading" class="loading">Cargando tus datos…</div>
-  <div id="app" class="hidden"></div>
-</div>
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('Service Worker registrado con éxito:', reg.scope))
-        .catch(err => console.error('Error registrando Service Worker:', err));
-    });
-  }
-</script>
-<script src="app.js"></script>
-<!-- Navegación Inferior para Móviles (Bottom Navigation) -->
-<nav class="mobile-nav" id="mobileNav">
-  <button class="mobile-nav-item active" onclick="switchMobileTab('inicio')">
-    <span class="nav-icon">🏠</span>
-    <span class="nav-label">Inicio</span>
-  </button>
-  <button class="mobile-nav-item" onclick="switchMobileTab('finanzas')">
-    <span class="nav-icon">💰</span>
-    <span class="nav-label">Finanzas</span>
-  </button>
-  <button class="mobile-nav-item nav-action-btn" onclick="abrirModalGastoRapido()">
-    <span class="nav-icon">➕</span>
-    <span class="nav-label">Registrar</span>
-  </button>
-  <button class="mobile-nav-item" onclick="switchMobileTab('asistente')">
-    <span class="nav-icon">🤖</span>
-    <span class="nav-label">Asistente</span>
-  </button>
-  <button class="mobile-nav-item" onclick="switchMobileTab('metas')">
-    <span class="nav-icon">🎯</span>
-    <span class="nav-label">Metas</span>
-  </button>
-  <button class="mobile-nav-item" onclick="switchMobileTab('prestado')">
-    <span class="nav-icon">🤝</span>
-    <span class="nav-label">Prestado</span>
-  </button>
-</nav>
-<!-- Vista de Préstamos -->
-<section id="view-prestado" class="pwa-view" style="display: none; padding: 15px;">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-    <h2>🤝 Préstamos</h2>
-    <button onclick="abrirModalPrestamo()" style="background: #2563eb; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer;">
-      + Nuevo Préstamo
+
+  <!-- Vista Principal (Inicio / Finanzas) -->
+  <div class="wrap" id="view-inicio">
+    <div class="eyebrow">Control financiero</div>
+    <h1 id="mainTitle">Quincena en curso</h1>
+    <div class="sub">Tu plan, en pesos reales — sin porcentajes genéricos.</div>
+    <div id="loading" class="loading">Cargando tus datos…</div>
+    <div id="app" class="hidden"></div>
+  </div>
+
+  <!-- Vista de Préstamos -->
+  <section id="view-prestado" class="pwa-view" style="display: none; padding: 15px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+      <h2>🤝 Préstamos</h2>
+      <button onclick="abrirModalPrestamo()" style="background: #2563eb; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer;">
+        + Nuevo Préstamo
+      </button>
+    </div>
+
+    <!-- Resumen de Préstamos -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+      <div style="background: #1e293b; padding: 12px; border-radius: 10px; border-left: 4px solid #eab308;">
+        <span style="font-size: 0.8rem; color: #94a3b8;">Por Cobrar</span>
+        <h3 id="total-por-cobrar" style="margin: 5px 0 0; color: #facc15;">$0</h3>
+      </div>
+      <div style="background: #1e293b; padding: 12px; border-radius: 10px; border-left: 4px solid #22c55e;">
+        <span style="font-size: 0.8rem; color: #94a3b8;">Cobrado</span>
+        <h3 id="total-cobrado" style="margin: 5px 0 0; color: #4ade80;">$0</h3>
+      </div>
+    </div>
+
+    <!-- Lista de Préstamos -->
+    <div id="lista-prestamos" style="display: flex; flex-direction: column; gap: 10px;">
+      <!-- Render dinámico desde JS -->
+    </div>
+  </section>
+
+  <!-- Modal Nuevo Préstamo -->
+  <div id="modal-prestamo" class="modal" style="display: none;">
+    <div class="modal-content" style="background: #1e293b; color: #fff; padding: 20px; border-radius: 12px;">
+      <h3 style="margin-top: 0;">Registrar Préstamo</h3>
+      <form id="form-prestamo" onsubmit="guardarPrestamo(event)">
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Persona</label>
+          <input type="text" id="prestamo-persona" required placeholder="Ej: Juan" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Monto ($)</label>
+          <input type="number" id="prestamo-monto" required placeholder="20000" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Fecha de Préstamo</label>
+          <input type="date" id="prestamo-fecha" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
+        </div>
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Descripción / Notas</label>
+          <input type="text" id="prestamo-notas" placeholder="Ej: Para el almuerzo" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" onclick="cerrarModalPrestamo()" style="background: #475569; color: #fff; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">Cancelar</button>
+          <button type="submit" style="background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Navegación Inferior para Móviles -->
+  <nav class="mobile-nav" id="mobileNav">
+    <button class="mobile-nav-item active" onclick="switchMobileTab('inicio')">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-label">Inicio</span>
     </button>
-  </div>
+    <button class="mobile-nav-item" onclick="switchMobileTab('finanzas')">
+      <span class="nav-icon">💰</span>
+      <span class="nav-label">Finanzas</span>
+    </button>
+    <button class="mobile-nav-item nav-action-btn" onclick="abrirModalGastoRapido()">
+      <span class="nav-icon">➕</span>
+      <span class="nav-label">Registrar</span>
+    </button>
+    <button class="mobile-nav-item" onclick="switchMobileTab('asistente')">
+      <span class="nav-icon">🤖</span>
+      <span class="nav-label">Asistente</span>
+    </button>
+    <button class="mobile-nav-item" onclick="switchMobileTab('metas')">
+      <span class="nav-icon">🎯</span>
+      <span class="nav-label">Metas</span>
+    </button>
+    <button class="mobile-nav-item" onclick="switchMobileTab('prestado')">
+      <span class="nav-icon">🤝</span>
+      <span class="nav-label">Prestado</span>
+    </button>
+  </nav>
 
-  <!-- Resumen de Préstamos -->
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
-    <div style="background: #1e293b; padding: 12px; border-radius: 10px; border-left: 4px solid #eab308;">
-      <span style="font-size: 0.8rem; color: #94a3b8;">Por Cobrar</span>
-      <h3 id="total-por-cobrar" style="margin: 5px 0 0; color: #facc15;">$0</h3>
-    </div>
-    <div style="background: #1e293b; padding: 12px; border-radius: 10px; border-left: 4px solid #22c55e;">
-      <span style="font-size: 0.8rem; color: #94a3b8;">Cobrado</span>
-      <h3 id="total-cobrado" style="margin: 5px 0 0; color: #4ade80;">$0</h3>
-    </div>
-  </div>
-
-  <!-- Lista de Préstamos -->
-  <div id="lista-prestamos" style="display: flex; flex-direction: column; gap: 10px;">
-    <!-- Render dinámico desde JS -->
-  </div>
-</section>
-
-<!-- Modal Nuevo Préstamo -->
-<div id="modal-prestamo" class="modal" style="display: none;">
-  <div class="modal-content" style="background: #1e293b; color: #fff; padding: 20px; border-radius: 12px;">
-    <h3 style="margin-top: 0;">Registrar Préstamo</h3>
-    <form id="form-prestamo" onsubmit="guardarPrestamo(event)">
-      <div style="margin-bottom: 12px;">
-        <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Persona</label>
-        <input type="text" id="prestamo-persona" required placeholder="Ej: Juan" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
-      </div>
-      <div style="margin-bottom: 12px;">
-        <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Monto ($)</label>
-        <input type="number" id="prestamo-monto" required placeholder="20000" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
-      </div>
-      <div style="margin-bottom: 12px;">
-        <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Fecha de Préstamo</label>
-        <input type="date" id="prestamo-fecha" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
-      </div>
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Descripción / Notas</label>
-        <input type="text" id="prestamo-notas" placeholder="Ej: Para el almuerzo" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
-      </div>
-      <div style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button type="button" onclick="cerrarModalPrestamo()" style="background: #475569; color: #fff; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">Cancelar</button>
-        <button type="submit" style="background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">Guardar</button>
-      </div>
-    </form>
-  </div>
-</div>
+  <!-- Scripts -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('Service Worker registrado con éxito:', reg.scope))
+          .catch(err => console.error('Error registrando Service Worker:', err));
+      });
+    }
+  </script>
+  <script src="app.js"></script>
 </body>
 </html>
