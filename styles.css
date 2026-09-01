@@ -289,3 +289,22 @@ h1 {
   .mobile-nav { display: flex; }
   .tabs { display: none !important; }
 }
+.tag-toggle {
+  border: none;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.tag-toggle.pendiente {
+  background-color: #f0e6ff;
+  color: #7c4dff;
+}
+
+.tag-toggle.pagado {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}

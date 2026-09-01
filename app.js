@@ -48,11 +48,18 @@ function computePeriod(today, cutoff, frequency){
   return {key,label,startDay,endDay,totalDays:endDay-startDay+1,elapsed:d-startDay+1,remaining:endDay-d,month:m,year:y};
 }
 
+// Calcula el total de Dinero Libre descontando obligaciones, gastos fijos y préstamos pendientes
 function extraPoolTotal(period, cp){
   const alloc = getAllocations();
   const ingresoExtra = (cp.incomes||[]).reduce((s,i)=>s+i.amount,0);
   const ingresoTotal = state.salary + ingresoExtra;
-  return ingresoTotal - alloc.fijos - alloc.libre;
+  
+  // Suma de préstamos pendientes por cobrar
+  const prestamosPendientes = (state.loans || [])
+    .filter(l => l.status === 'Pendiente')
+    .reduce((s, l) => s + (l.pending || 0), 0);
+
+  return ingresoTotal - alloc.fijos - alloc.libre - prestamosPendientes;
 }
 
 function normalizePeriod(cp){
@@ -119,7 +126,7 @@ function render(){
   app.innerHTML = `
     <div class="tabs">
       <button class="tab ${currentTab==='dashboard'?'active':''}" data-tab="dashboard">${freq==='mensual'?'Mes':'Quincena'}</button>
-      <button class="tab ${currentTab==='extra'?'active':''}" data-tab="extra">Sin comprometer</button>
+      <button class="tab ${currentTab==='extra'?'active':''}" data-tab="extra">Dinero libre</button>
       <button class="tab ${currentTab==='loans'?'active':''}" data-tab="loans">🤝 Préstamos</button>
       <button class="tab ${currentTab==='assistant'?'active':''}" data-tab="assistant">🤖 Asistente</button>
       <button class="tab ${currentTab==='goals'?'active':''}" data-tab="goals">🎯 Metas</button>
@@ -389,7 +396,7 @@ function renderExtra(period){
 
   return `
     <div class="sinasignar">
-      <div class="lbl">Te queda sin comprometer</div>
+      <div class="lbl">Dinero libre disponible</div>
       <div class="amt">${fmt(remaining)}</div>
     </div>
     <div class="panel">
@@ -421,15 +428,20 @@ function bindExtra(period){
 }
 
 function renderLoans(){
-  const loansHtml = (state.loans && state.loans.length) ? state.loans.map(l => `
-    <li>
-      <span><b>${escapeHtml(l.person)}</b> - Pendiente: ${fmt(l.pending)}</span>
-      <span style="display:flex;align-items:center;gap:8px;">
-        <span class="tag">${l.status}</span>
-        <button class="del" data-loan-del="${l.id}">✕</button>
-      </span>
-    </li>
-  `).join('') : '<div class="empty">No tienes préstamos registrados.</div>';
+  const loansHtml = (state.loans && state.loans.length) ? state.loans.map(l => {
+    const isPagado = l.status === 'Pagado';
+    return `
+      <li>
+        <span><b>${escapeHtml(l.person)}</b> - ${isPagado ? 'Monto:' : 'Pendiente:'} ${fmt(l.pending)}</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <button class="tag tag-toggle ${isPagado ? 'pagado' : 'pendiente'}" data-loan-toggle="${l.id}" title="Clic para cambiar estado">
+            ${l.status}
+          </button>
+          <button class="del" data-loan-del="${l.id}">✕</button>
+        </span>
+      </li>
+    `;
+  }).join('') : '<div class="empty">No tienes préstamos registrados.</div>';
 
   return `
     <div class="panel">
@@ -450,11 +462,32 @@ function bindLoans(){
     const amount = Number(document.getElementById('loanAmount').value);
     if(!person || !amount || amount<=0) return;
 
-    state.loans.push({id: Date.now().toString(36), person, original:amount, returned:0, pending:amount, status:'Pendiente'});
+    state.loans.push({
+      id: Date.now().toString(36), 
+      person, 
+      original: amount, 
+      returned: 0, 
+      pending: amount, 
+      status: 'Pendiente'
+    });
     saveState();
     render();
   });
 
+  // Alternar entre Pendiente y Pagado
+  document.querySelectorAll('[data-loan-toggle]').forEach(btn => {
+    btn.addEventListener('click', ()=>{
+      const id = btn.getAttribute('data-loan-toggle');
+      const loan = state.loans.find(l => l.id === id);
+      if(loan){
+        loan.status = loan.status === 'Pagado' ? 'Pendiente' : 'Pagado';
+        saveState();
+        render();
+      }
+    });
+  });
+
+  // Eliminar préstamo
   document.querySelectorAll('[data-loan-del]').forEach(btn => {
     btn.addEventListener('click', ()=>{
       const id = btn.getAttribute('data-loan-del');
@@ -478,7 +511,7 @@ function buildFinancialContext(period) {
   const extraDisp = extraTotal - cp.spent.extra;
 
   const prestamosActivos = (state.loans || [])
-    .filter(l => l.pending > 0)
+    .filter(l => l.pending > 0 && l.status === 'Pendiente')
     .map(l => `${l.person}: debe ${fmt(l.pending)}`)
     .join(', ') || 'Ninguno';
 
@@ -503,7 +536,7 @@ PRESUPUESTOS Y DISPONIBILIDAD:
    - Presupuestado: ${fmt(alloc.fijos)} | Gastado: ${fmt(cp.spent.fijos)} | Disponible: ${fmt(fijosDisp)}
 2. Gasto Libre:
    - Presupuestado: ${fmt(alloc.libre)} | Gastado: ${fmt(cp.spent.libre)} | Disponible: ${fmt(libreDisp)}
-3. Dinero Sin Comprometer / Extra:
+3. Dinero Libre:
    - Total disponible: ${fmt(extraDisp)}
 
 OTRO DETALLE:
