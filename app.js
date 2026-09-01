@@ -101,6 +101,36 @@ function archiveIfNeeded(period){
   }
 }
 
+function updateMobileNav() {
+  const items = document.querySelectorAll('.mobile-nav-item');
+  items.forEach(item => {
+    const onclickAttr = item.getAttribute('onclick') || '';
+    if (onclickAttr.includes(`'${currentTab}'`)) {
+      item.classList.add('active');
+    } else if (!onclickAttr.includes('abrirModalGastoRapido')) {
+      item.classList.remove('active');
+    }
+  });
+}
+
+window.switchMobileTab = function(tabName) {
+  currentTab = tabName;
+  render();
+};
+
+window.abrirModalGastoRapido = function() {
+  currentTab = 'dashboard';
+  render();
+  setTimeout(() => {
+    const expForm = document.getElementById('expForm');
+    if (expForm) {
+      expForm.scrollIntoView({ behavior: 'smooth' });
+      const amountInput = document.getElementById('expAmount');
+      if (amountInput) amountInput.focus();
+    }
+  }, 100);
+};
+
 function render(){
   const app = document.getElementById('app');
   const loading = document.getElementById('loading');
@@ -166,6 +196,8 @@ function render(){
   else if(currentTab==='assistant'){ tc.innerHTML = renderAssistant(period); bindAssistant(period); }
   else if(currentTab==='goals'){ tc.innerHTML = renderGoals(); bindGoals(); }
   else if(currentTab==='settings'){ tc.innerHTML = renderSetup({userName:state.userName, salary:state.salary, payDay:state.payDay, fijosMensual:state.fijosMensual, variablesMensual:state.variablesMensual, payFrequency:state.payFrequency||'quincenal'}); bindSetup(); }
+
+  updateMobileNav();
 }
 
 function renderSetup(prefill){
