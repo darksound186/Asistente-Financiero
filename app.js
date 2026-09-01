@@ -101,26 +101,6 @@ function archiveIfNeeded(period){
   }
 }
 
-// Helper universal para eventos de click/tap sin duplicados en móviles
-function bindTouch(elementId, handler) {
-  const el = document.getElementById(elementId);
-  if (!el) return;
-  
-  let handled = false;
-  const execute = (e) => {
-    if (e.type === 'touchstart' || e.type === 'touchend') {
-      e.preventDefault();
-    }
-    if (handled) return;
-    handled = true;
-    setTimeout(() => { handled = false; }, 350);
-    handler(e);
-  };
-
-  el.addEventListener('touchend', execute, { passive: false });
-  el.addEventListener('click', execute);
-}
-
 function render(){
   const app = document.getElementById('app');
   const loading = document.getElementById('loading');
@@ -172,13 +152,11 @@ function render(){
   `;
 
   document.querySelectorAll('.tab').forEach(t=>{
-    const changeTab = (e) => {
+    t.addEventListener('click', (e) => {
       e.preventDefault();
       currentTab = t.getAttribute('data-tab');
       render();
-    };
-    t.addEventListener('touchend', changeTab, { passive: false });
-    t.addEventListener('click', changeTab);
+    });
   });
 
   const tc = document.getElementById('tabContent');
@@ -198,29 +176,31 @@ function renderSetup(prefill){
   return `
     <div class="panel" id="setupPanel">
       <h2>${state ? 'Ajustar tu sistema' : 'Arma tu sistema financiero'}</h2>
-      <div class="field">
-        <label>¿Cómo te llamas?</label>
-        <input type="text" id="inUserName" value="${escapeHtml(s.userName||'')}" placeholder="Ej: Darikson">
-      </div>
-      <div class="field">
-        <label>¿Cómo te pagan?</label>
-        <div class="freq-toggle" id="freqToggle">
-          <button type="button" class="freqBtn ${freq==='quincenal'?'active':''}" data-freq="quincenal">Quincenal</button>
-          <button type="button" class="freqBtn ${freq==='mensual'?'active':''}" data-freq="mensual">Mensual</button>
+      <form id="setupForm">
+        <div class="field">
+          <label>¿Cómo te llamas?</label>
+          <input type="text" id="inUserName" value="${escapeHtml(s.userName||'')}" placeholder="Ej: Darikson">
         </div>
-      </div>
-      <div class="field"><label id="salaryLabel">${freq==='mensual'?'Sueldo neto mensual':'Sueldo neto por quincena'}</label><input type="number" id="inSalary" value="${s.salary}"></div>
-      <div class="field"><label id="cutoffLabel">${freq==='mensual'?'Día del mes en que te pagan':'Día de corte de la primera quincena'}</label><input type="number" id="inCutoff" min="1" max="31" value="${s.payDay}"></div>
-      <div class="row2">
-        <div class="field"><label>Gastos fijos al mes</label><input type="number" id="inFijos" value="${s.fijosMensual}"></div>
-        <div class="field"><label>Gastos variables al mes</label><input type="number" id="inVar" value="${s.variablesMensual}"></div>
-      </div>
-      <div class="field">
-        <label>Gemini API Key (para el Asistente IA)</label>
-        <input type="password" id="inApiKey" value="${apiKey}" placeholder="Pega tu API Key de Google AI Studio">
-      </div>
-      <button type="button" class="btn" id="saveSetup">Guardar</button>
-      <div class="err" id="setupErr"></div>
+        <div class="field">
+          <label>¿Cómo te pagan?</label>
+          <div class="freq-toggle" id="freqToggle">
+            <button type="button" class="freqBtn ${freq==='quincenal'?'active':''}" data-freq="quincenal">Quincenal</button>
+            <button type="button" class="freqBtn ${freq==='mensual'?'active':''}" data-freq="mensual">Mensual</button>
+          </div>
+        </div>
+        <div class="field"><label id="salaryLabel">${freq==='mensual'?'Sueldo neto mensual':'Sueldo neto por quincena'}</label><input type="number" id="inSalary" value="${s.salary}"></div>
+        <div class="field"><label id="cutoffLabel">${freq==='mensual'?'Día del mes en que te pagan':'Día de corte de la primera quincena'}</label><input type="number" id="inCutoff" min="1" max="31" value="${s.payDay}"></div>
+        <div class="row2">
+          <div class="field"><label>Gastos fijos al mes</label><input type="number" id="inFijos" value="${s.fijosMensual}"></div>
+          <div class="field"><label>Gastos variables al mes</label><input type="number" id="inVar" value="${s.variablesMensual}"></div>
+        </div>
+        <div class="field">
+          <label>Gemini API Key (para el Asistente IA)</label>
+          <input type="password" id="inApiKey" value="${apiKey}" placeholder="Pega tu API Key de Google AI Studio">
+        </div>
+        <button type="submit" class="btn">Guardar</button>
+        <div class="err" id="setupErr"></div>
+      </form>
     </div>
   `;
 }
@@ -228,49 +208,49 @@ function renderSetup(prefill){
 function bindSetup(){
   let selectedFreq = document.querySelector('.freqBtn.active')?.getAttribute('data-freq') || 'quincenal';
   document.querySelectorAll('.freqBtn').forEach(btn=>{
-    const toggleFreq = (e) => {
+    btn.addEventListener('click', (e) => {
       e.preventDefault();
       selectedFreq = btn.getAttribute('data-freq');
       document.querySelectorAll('.freqBtn').forEach(b=>b.classList.toggle('active', b===btn));
-    };
-    btn.addEventListener('touchend', toggleFreq, { passive: false });
-    btn.addEventListener('click', toggleFreq);
+    });
   });
 
-  bindTouch('saveSetup', () => {
-    const userName = document.getElementById('inUserName').value.trim();
-    const salary = Number(document.getElementById('inSalary').value);
-    const cutoff = Number(document.getElementById('inCutoff').value);
-    const fijosMensual = Number(document.getElementById('inFijos').value);
-    const variablesMensual = Number(document.getElementById('inVar').value);
-    const apiKey = document.getElementById('inApiKey').value.trim();
-    const errEl = document.getElementById('setupErr');
+  const setupForm = document.getElementById('setupForm');
+  if(setupForm) {
+    setupForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const userName = document.getElementById('inUserName').value.trim();
+      const salary = Number(document.getElementById('inSalary').value);
+      const cutoff = Number(document.getElementById('inCutoff').value);
+      const fijosMensual = Number(document.getElementById('inFijos').value);
+      const variablesMensual = Number(document.getElementById('inVar').value);
+      const apiKey = document.getElementById('inApiKey').value.trim();
+      const errEl = document.getElementById('setupErr');
 
-    if(!salary || salary<=0){ errEl.textContent = 'Ingresa un sueldo válido.'; return; }
+      if(!salary || salary<=0){ if(errEl) errEl.textContent = 'Ingresa un sueldo válido.'; return; }
 
-    if(apiKey) {
-      localStorage.setItem('gemini_api_key', apiKey);
-    }
+      if(apiKey) localStorage.setItem('gemini_api_key', apiKey);
 
-    const wasSetUp = !!state;
-    state = state || {history:[], currentPeriod:null, goals:[], loans:[]};
-    state.userName = userName;
-    state.payFrequency = selectedFreq;
-    state.salary = salary; 
-    state.payDay = cutoff;
-    state.fijosMensual = fijosMensual; 
-    state.variablesMensual = variablesMensual;
+      const wasSetUp = !!state;
+      state = state || {history:[], currentPeriod:null, goals:[], loans:[]};
+      state.userName = userName;
+      state.payFrequency = selectedFreq;
+      state.salary = salary; 
+      state.payDay = cutoff;
+      state.fijosMensual = fijosMensual; 
+      state.variablesMensual = variablesMensual;
 
-    if(!wasSetUp){
-      state.history = []; 
-      state.currentPeriod = null;
-      state.goals = [{id:'seed-1', name:'Fondo de emergencia', target:800000, saved:0}];
-    }
+      if(!wasSetUp){
+        state.history = []; 
+        state.currentPeriod = null;
+        state.goals = [{id:'seed-1', name:'Fondo de emergencia', target:800000, saved:0}];
+      }
 
-    saveState();
-    currentTab = 'dashboard';
-    render();
-  });
+      saveState();
+      currentTab = 'dashboard';
+      render();
+    });
+  }
 }
 
 function renderDashboard(period){
@@ -324,11 +304,11 @@ function renderDashboard(period){
 
     <div class="panel" style="margin-bottom: 16px;">
       <h2>💰 Registrar Ingreso Extra</h2>
-      <div class="expense-form">
-        <input type="number" id="incAmount" placeholder="Monto extra">
+      <form id="incForm" class="expense-form">
+        <input type="number" id="incAmount" placeholder="Monto extra" required>
         <input type="text" id="incNote" placeholder="Concepto (ej. Trabajo freelance, regalo...)">
-        <button type="button" id="addIncome">Agregar Ingreso</button>
-      </div>
+        <button type="submit">Agregar Ingreso</button>
+      </form>
       <div class="err" id="incErr"></div>
       
       <h3 style="margin-top:16px; font-size: 0.95rem; color:#555;">Ingresos registrados en este período:</h3>
@@ -352,16 +332,16 @@ function renderDashboard(period){
 
     <div class="panel">
       <h2>Registrar un gasto</h2>
-      <div class="expense-form">
+      <form id="expForm" class="expense-form">
         <select id="expBucket">
           <option value="fijos">Obligaciones</option>
           <option value="libre" selected>Gasto libre</option>
         </select>
         <select id="expCategory">${catOptionsLibre}</select>
-        <input type="number" id="expAmount" placeholder="Monto">
+        <input type="number" id="expAmount" placeholder="Monto" required>
         <input type="text" id="expNote" placeholder="Nota (opcional)">
-        <button type="button" id="addExpense">Agregar</button>
-      </div>
+        <button type="submit">Agregar</button>
+      </form>
       <div class="err" id="expErr"></div>
       <ul class="moves">${movesHtml}</ul>
     </div>
@@ -379,53 +359,51 @@ function bindDashboard(){
     });
   }
 
-  bindTouch('addIncome', () => {
-    const amount = Number(document.getElementById('incAmount').value);
-    const note = document.getElementById('incNote').value.trim();
-    const errEl = document.getElementById('incErr');
+  const incForm = document.getElementById('incForm');
+  if(incForm){
+    incForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const amount = Number(document.getElementById('incAmount').value);
+      const note = document.getElementById('incNote').value.trim();
+      const errEl = document.getElementById('incErr');
 
-    if(!amount || amount <= 0){
-      if(errEl) errEl.textContent = 'Ingresa un monto válido.';
-      return;
-    }
+      if(!amount || amount <= 0){ if(errEl) errEl.textContent = 'Ingresa un monto válido.'; return; }
 
-    if(!state.currentPeriod.incomes) state.currentPeriod.incomes = [];
-    const id = Date.now().toString(36);
-    state.currentPeriod.incomes.push({ id, amount, note });
+      if(!state.currentPeriod.incomes) state.currentPeriod.incomes = [];
+      const id = Date.now().toString(36);
+      state.currentPeriod.incomes.push({ id, amount, note });
 
-    saveState();
-    render();
-  });
+      saveState();
+      render();
+    });
+  }
 
-  bindTouch('addExpense', () => {
-    const bucket = bucketSel.value;
-    const category = catSel.value;
-    const amount = Number(document.getElementById('expAmount').value);
-    const note = document.getElementById('expNote').value.trim();
-    const errEl = document.getElementById('expErr');
+  const expForm = document.getElementById('expForm');
+  if(expForm){
+    expForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const bucket = bucketSel.value;
+      const category = catSel.value;
+      const amount = Number(document.getElementById('expAmount').value);
+      const note = document.getElementById('expNote').value.trim();
+      const errEl = document.getElementById('expErr');
 
-    if(!amount || amount<=0){ if(errEl) errEl.textContent='Ingresa un monto válido.'; return; }
+      if(!amount || amount<=0){ if(errEl) errEl.textContent='Ingresa un monto válido.'; return; }
 
-    const id = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    state.currentPeriod.expenses.push({id, bucket, amount, note, category});
-    state.currentPeriod.spent[bucket] += amount;
+      const id = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+      state.currentPeriod.expenses.push({id, bucket, amount, note, category});
+      state.currentPeriod.spent[bucket] += amount;
 
-    saveState();
-    render();
-  });
+      saveState();
+      render();
+    });
+  }
 
-  // Delegación de eventos para eliminar
   const tc = document.getElementById('tabContent');
   if(tc) {
-    let handled = false;
-    const handleDelete = (e) => {
+    tc.addEventListener('click', (e) => {
       const btnInc = e.target.closest('.del[data-inc-id]');
       if (btnInc) {
-        if (e.type === 'touchend') e.preventDefault();
-        if (handled) return;
-        handled = true;
-        setTimeout(() => { handled = false; }, 350);
-
         const id = btnInc.getAttribute('data-inc-id');
         const idx = (state.currentPeriod.incomes||[]).findIndex(i=>i.id===id);
         if(idx > -1){
@@ -438,11 +416,6 @@ function bindDashboard(){
 
       const btnExp = e.target.closest('.del[data-id]');
       if (btnExp) {
-        if (e.type === 'touchend') e.preventDefault();
-        if (handled) return;
-        handled = true;
-        setTimeout(() => { handled = false; }, 350);
-
         const id = btnExp.getAttribute('data-id');
         const idx = state.currentPeriod.expenses.findIndex(e=>e.id===id);
         if(idx>-1){
@@ -452,10 +425,7 @@ function bindDashboard(){
           render();
         }
       }
-    };
-
-    tc.addEventListener('touchend', handleDelete, { passive: false });
-    tc.addEventListener('click', handleDelete);
+    });
   }
 }
 
@@ -473,30 +443,34 @@ function renderExtra(period){
     </div>
     <div class="panel">
       <h2>Registra un desembolso libre</h2>
-      <div class="expense-form">
-        <input type="number" id="extraAmount" placeholder="Monto">
+      <form id="extraForm" class="expense-form">
+        <input type="number" id="extraAmount" placeholder="Monto" required>
         <input type="text" id="extraNote" placeholder="¿En qué?">
-        <button type="button" id="addExtra">Agregar</button>
-      </div>
+        <button type="submit">Agregar</button>
+      </form>
     </div>
   `;
 }
 
 function bindExtra(period){
-  bindTouch('addExtra', () => {
-    const amount = Number(document.getElementById('extraAmount').value);
-    const note = document.getElementById('extraNote').value.trim();
-    if(!amount || amount<=0) return;
+  const extraForm = document.getElementById('extraForm');
+  if(extraForm){
+    extraForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const amount = Number(document.getElementById('extraAmount').value);
+      const note = document.getElementById('extraNote').value.trim();
+      if(!amount || amount<=0) return;
 
-    const cp = state.currentPeriod;
-    normalizePeriod(cp);
-    const id = Date.now().toString(36);
-    cp.extraExpenses.push({id, amount, note});
-    cp.spent.extra += amount;
+      const cp = state.currentPeriod;
+      normalizePeriod(cp);
+      const id = Date.now().toString(36);
+      cp.extraExpenses.push({id, amount, note});
+      cp.spent.extra += amount;
 
-    saveState();
-    render();
-  });
+      saveState();
+      render();
+    });
+  }
 }
 
 function renderLoans(){
@@ -506,7 +480,7 @@ function renderLoans(){
       <li>
         <span><b>${escapeHtml(l.person)}</b> - ${isPagado ? 'Monto:' : 'Pendiente:'} ${fmt(l.pending)}</span>
         <span style="display:flex;align-items:center;gap:8px;">
-          <button type="button" class="tag tag-toggle ${isPagado ? 'pagado' : 'pendiente'}" data-loan-toggle="${l.id}" title="Clic para cambiar estado">
+          <button type="button" class="tag tag-toggle ${isPagado ? 'pagado' : 'pendiente'}" data-loan-toggle="${l.id}">
             ${l.status}
           </button>
           <button type="button" class="del" data-loan-del="${l.id}">✕</button>
@@ -518,45 +492,45 @@ function renderLoans(){
   return `
     <div class="panel">
       <h2>Préstamos</h2>
-      <div class="row2">
-        <div class="field"><label>Persona</label><input type="text" id="loanPerson" placeholder="Nombre"></div>
-        <div class="field"><label>Monto</label><input type="number" id="loanAmount" placeholder="Monto"></div>
-      </div>
-      <button type="button" class="btn" id="addLoan">Registrar Préstamo</button>
+      <form id="loanForm">
+        <div class="row2">
+          <div class="field"><label>Persona</label><input type="text" id="loanPerson" placeholder="Nombre" required></div>
+          <div class="field"><label>Monto</label><input type="number" id="loanAmount" placeholder="Monto" required></div>
+        </div>
+        <button type="submit" class="btn">Registrar Préstamo</button>
+      </form>
       <ul class="moves" style="margin-top:16px;">${loansHtml}</ul>
     </div>
   `;
 }
 
 function bindLoans(){
-  bindTouch('addLoan', () => {
-    const person = document.getElementById('loanPerson').value.trim();
-    const amount = Number(document.getElementById('loanAmount').value);
-    if(!person || !amount || amount<=0) return;
+  const loanForm = document.getElementById('loanForm');
+  if(loanForm){
+    loanForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const person = document.getElementById('loanPerson').value.trim();
+      const amount = Number(document.getElementById('loanAmount').value);
+      if(!person || !amount || amount<=0) return;
 
-    state.loans.push({
-      id: Date.now().toString(36), 
-      person, 
-      original: amount, 
-      returned: 0, 
-      pending: amount, 
-      status: 'Pendiente'
+      state.loans.push({
+        id: Date.now().toString(36), 
+        person, 
+        original: amount, 
+        returned: 0, 
+        pending: amount, 
+        status: 'Pendiente'
+      });
+      saveState();
+      render();
     });
-    saveState();
-    render();
-  });
+  }
 
   const tc = document.getElementById('tabContent');
   if(tc) {
-    let handled = false;
-    const handleLoanActions = (e) => {
+    tc.addEventListener('click', (e) => {
       const toggleBtn = e.target.closest('[data-loan-toggle]');
       if (toggleBtn) {
-        if (e.type === 'touchend') e.preventDefault();
-        if (handled) return;
-        handled = true;
-        setTimeout(() => { handled = false; }, 350);
-
         const id = toggleBtn.getAttribute('data-loan-toggle');
         const loan = state.loans.find(l => l.id === id);
         if(loan){
@@ -569,20 +543,12 @@ function bindLoans(){
 
       const delBtn = e.target.closest('[data-loan-del]');
       if (delBtn) {
-        if (e.type === 'touchend') e.preventDefault();
-        if (handled) return;
-        handled = true;
-        setTimeout(() => { handled = false; }, 350);
-
         const id = delBtn.getAttribute('data-loan-del');
         state.loans = state.loans.filter(l => l.id !== id);
         saveState();
         render();
       }
-    };
-
-    tc.addEventListener('touchend', handleLoanActions, { passive: false });
-    tc.addEventListener('click', handleLoanActions);
+    });
   }
 }
 
@@ -644,10 +610,10 @@ function renderAssistant(period){
       <div class="chat-log" id="chatLog">
         <div class="bubble bot">¡Hola! Analicé tus finanzas de este período. ¿En qué te puedo ayudar hoy?</div>
       </div>
-      <div class="chat-input">
-        <input type="text" id="chatInput" placeholder="Ej: ¿Cuánto dinero me queda libre para salir?">
-        <button type="button" id="chatSendBtn">Enviar</button>
-      </div>
+      <form id="chatForm" class="chat-input">
+        <input type="text" id="chatInput" placeholder="Ej: ¿Cuánto dinero me queda libre para salir?" required>
+        <button type="submit">Enviar</button>
+      </form>
     </div>
   `;
 }
@@ -655,72 +621,71 @@ function renderAssistant(period){
 function bindAssistant(period){
   const chatInput = document.getElementById('chatInput');
   const chatLog = document.getElementById('chatLog');
+  const chatForm = document.getElementById('chatForm');
 
-  async function handleSend() {
-    const userText = chatInput.value.trim();
-    if (!userText) return;
+  if(chatForm){
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const userText = chatInput.value.trim();
+      if (!userText) return;
 
-    chatLog.innerHTML += `<div class="bubble user">${escapeHtml(userText)}</div>`;
-    chatInput.value = '';
-    chatLog.scrollTop = chatLog.scrollHeight;
+      chatLog.innerHTML += `<div class="bubble user">${escapeHtml(userText)}</div>`;
+      chatInput.value = '';
+      chatLog.scrollTop = chatLog.scrollHeight;
 
-    const loadingId = 'loading-' + Date.now();
-    chatLog.innerHTML += `<div class="bubble bot" id="${loadingId}">Pensando y calculando...</div>`;
-    chatLog.scrollTop = chatLog.scrollHeight;
+      const loadingId = 'loading-' + Date.now();
+      chatLog.innerHTML += `<div class="bubble bot" id="${loadingId}">Pensando y calculando...</div>`;
+      chatLog.scrollTop = chatLog.scrollHeight;
 
-    const apiKey = getGeminiKey().trim();
-    if (!apiKey) {
-      const loadingEl = document.getElementById(loadingId);
-      if (loadingEl) loadingEl.textContent = 'Por favor configura tu Gemini API Key en Ajustes (⚙️).';
-      return;
-    }
+      const apiKey = getGeminiKey().trim();
+      if (!apiKey) {
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.textContent = 'Por favor configura tu Gemini API Key en Ajustes (⚙️).';
+        return;
+      }
 
-    try {
-      const systemContext = buildFinancialContext(period);
+      try {
+        const systemContext = buildFinancialContext(period);
 
-      let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta del usuario: ${userText}` }] }]
-        })
-      });
-
-      if (!response.ok) {
-        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta del usuario: ${userText}` }] }]
           })
         });
+
+        if (!response.ok) {
+          response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta del usuario: ${userText}` }] }]
+            })
+          });
+        }
+
+        const data = await response.json();
+        const loadingEl = document.getElementById(loadingId);
+
+        if (!response.ok) {
+          if (loadingEl) loadingEl.textContent = `Error API (${response.status}): ${data.error?.message || 'Verifica tu API Key en Ajustes.'}`;
+          return;
+        }
+
+        const botReply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude interpretar la respuesta.';
+        if (loadingEl) loadingEl.textContent = botReply;
+
+      } catch (err) {
+        console.error(err);
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) {
+          loadingEl.textContent = 'Hubo un problema de conexión al llamar a la API.';
+        }
       }
-
-      const data = await response.json();
-      const loadingEl = document.getElementById(loadingId);
-
-      if (!response.ok) {
-        if (loadingEl) loadingEl.textContent = `Error API (${response.status}): ${data.error?.message || 'Verifica tu API Key en Ajustes.'}`;
-        return;
-      }
-
-      const botReply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude interpretar la respuesta.';
-      if (loadingEl) loadingEl.textContent = botReply;
-
-    } catch (err) {
-      console.error(err);
-      const loadingEl = document.getElementById(loadingId);
-      if (loadingEl) {
-        loadingEl.textContent = 'Hubo un problema de conexión al llamar a la API.';
-      }
-    }
-    chatLog.scrollTop = chatLog.scrollHeight;
+      chatLog.scrollTop = chatLog.scrollHeight;
+    });
   }
-
-  bindTouch('chatSendBtn', handleSend);
-  chatInput?.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); handleSend(); }
-  });
 }
 
 function renderGoals(){
@@ -738,10 +703,10 @@ function renderGoals(){
           Ahorrado: <b>${fmt(g.saved)}</b> de <b>${fmt(g.target)}</b> (${pct}%)
         </div>
         <div class="bar" style="margin-bottom: 12px;"><div class="bar-fill goal-fill" style="width:${pct}%; background: linear-gradient(90deg, #4caf50, #2e7d32);"></div></div>
-        <div class="expense-form">
-          <input type="number" id="addSaved_${g.id}" placeholder="Abonar monto">
-          <button type="button" data-goal-add="${g.id}">Abonar</button>
-        </div>
+        <form class="goal-add-form expense-form" data-goal-id="${g.id}">
+          <input type="number" id="addSaved_${g.id}" placeholder="Abonar monto" required>
+          <button type="submit">Abonar</button>
+        </form>
       </div>
     `;
   }).join('') : '<div class="empty">No tienes metas de ahorro registradas.</div>';
@@ -749,11 +714,11 @@ function renderGoals(){
   return `
     <div class="panel" style="margin-bottom: 16px;">
       <h2>🎯 Crear nueva meta de ahorro</h2>
-      <div class="expense-form">
-        <input type="text" id="goalName" placeholder="Ej: Viaje, Moto, Fondo de emergencia">
-        <input type="number" id="goalTarget" placeholder="Meta ($)">
-        <button type="button" id="addGoalBtn">Crear Meta</button>
-      </div>
+      <form id="newGoalForm" class="expense-form">
+        <input type="text" id="goalName" placeholder="Ej: Viaje, Moto, Fondo de emergencia" required>
+        <input type="number" id="goalTarget" placeholder="Meta ($)" required>
+        <button type="submit">Crear Meta</button>
+      </form>
       <div class="err" id="goalErr"></div>
     </div>
     <h2>Tus Metas</h2>
@@ -762,35 +727,34 @@ function renderGoals(){
 }
 
 function bindGoals(){
-  bindTouch('addGoalBtn', () => {
-    const name = document.getElementById('goalName').value.trim();
-    const target = Number(document.getElementById('goalTarget').value);
-    const errEl = document.getElementById('goalErr');
+  const newGoalForm = document.getElementById('newGoalForm');
+  if(newGoalForm){
+    newGoalForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('goalName').value.trim();
+      const target = Number(document.getElementById('goalTarget').value);
+      const errEl = document.getElementById('goalErr');
 
-    if(!name || !target || target <= 0){
-      if(errEl) errEl.textContent = 'Ingresa un nombre y un monto objetivo válido.';
-      return;
-    }
+      if(!name || !target || target <= 0){
+        if(errEl) errEl.textContent = 'Ingresa un nombre y un monto objetivo válido.';
+        return;
+      }
 
-    if(!state.goals) state.goals = [];
-    state.goals.push({ id: Date.now().toString(36), name, target, saved: 0 });
+      if(!state.goals) state.goals = [];
+      state.goals.push({ id: Date.now().toString(36), name, target, saved: 0 });
 
-    saveState();
-    render();
-  });
+      saveState();
+      render();
+    });
+  }
 
   const tc = document.getElementById('tabContent');
   if(tc) {
-    let handled = false;
-    const handleGoalActions = (e) => {
-      const addBtn = e.target.closest('[data-goal-add]');
-      if (addBtn) {
-        if (e.type === 'touchend') e.preventDefault();
-        if (handled) return;
-        handled = true;
-        setTimeout(() => { handled = false; }, 350);
-
-        const id = addBtn.getAttribute('data-goal-add');
+    tc.addEventListener('submit', (e) => {
+      const goalForm = e.target.closest('.goal-add-form');
+      if(goalForm) {
+        e.preventDefault();
+        const id = goalForm.getAttribute('data-goal-id');
         const input = document.getElementById(`addSaved_${id}`);
         const amount = Number(input?.value);
         if(!amount || amount <= 0) return;
@@ -801,25 +765,18 @@ function bindGoals(){
           saveState();
           render();
         }
-        return;
       }
+    });
 
+    tc.addEventListener('click', (e) => {
       const delBtn = e.target.closest('[data-goal-del]');
       if (delBtn) {
-        if (e.type === 'touchend') e.preventDefault();
-        if (handled) return;
-        handled = true;
-        setTimeout(() => { handled = false; }, 350);
-
         const id = delBtn.getAttribute('data-goal-del');
         state.goals = state.goals.filter(g => g.id !== id);
         saveState();
         render();
       }
-    };
-
-    tc.addEventListener('touchend', handleGoalActions, { passive: false });
-    tc.addEventListener('click', handleGoalActions);
+    });
   }
 }
 
