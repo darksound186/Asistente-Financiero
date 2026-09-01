@@ -524,43 +524,30 @@ function bindAssistant(period){
     try {
       const systemContext = buildFinancialContext(period);
 
-      // Llamada directa al modelo usando la sintaxis oficial de v1beta
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      // Usando gemini-3.5-flash como el modelo principal
+      let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: `${systemContext}\n\nPregunta del usuario: ${userText}` }
-              ]
-            }
-          ]
+          contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta del usuario: ${userText}` }] }]
         })
       });
 
-      const data = await response.json();
-      const loadingEl = document.getElementById(loadingId);
-
       if (!response.ok) {
-        // Si el modelo 1.5-flash no estuviera disponible, intentar respaldo con gemini-2.5-flash
-        const fallbackResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${apiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta del usuario: ${userText}` }] }]
           })
         });
-        
-        const fallbackData = await fallbackResponse.json();
-        if (!fallbackResponse.ok) {
-          if (loadingEl) loadingEl.textContent = `Error API (${fallbackResponse.status}): ${fallbackData.error?.message || 'Verifica tu API Key en Ajustes.'}`;
-          return;
-        }
-        
-        const fallbackReply = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude interpretar la respuesta.';
-        if (loadingEl) loadingEl.textContent = fallbackReply;
+      }
+
+      const data = await response.json();
+      const loadingEl = document.getElementById(loadingId);
+
+      if (!response.ok) {
+        if (loadingEl) loadingEl.textContent = `Error API (${response.status}): ${data.error?.message || 'Verifica tu API Key en Ajustes.'}`;
         return;
       }
 
@@ -582,7 +569,6 @@ function bindAssistant(period){
     if (e.key === 'Enter') handleSend();
   });
 }
-
 function escapeHtml(str) {
   return str.replace(/[&<>"']/g, function(m) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
