@@ -1814,7 +1814,7 @@ function bindImport(){
 })();
 
 function switchMobileTab(tabId) {
-  // Actualizar estado de los botones de la navegación inferior
+  // 1. Actualizar estado visual de los botones de la barra inferior
   const items = document.querySelectorAll('.mobile-nav-item');
   items.forEach(item => item.classList.remove('active'));
 
@@ -1823,14 +1823,24 @@ function switchMobileTab(tabId) {
   );
   if (activeBtn) activeBtn.classList.add('active');
 
-  // Ocultar/Mostrar contenedores de vistas según la pestaña seleccionada
-  const views = ['inicio', 'finanzas', 'asistente', 'metas', 'prestado'];
-  views.forEach(view => {
-    const el = document.getElementById(`view-${view}`) || document.getElementById(view);
+  // 2. Mapeo de vistas según los IDs de index.html
+  const views = {
+    inicio: document.getElementById('view-inicio') || document.querySelector('.dashboard') || document.querySelector('main'),
+    finanzas: document.getElementById('view-finanzas') || document.getElementById('finanzas') || document.querySelector('.finanzas-container'),
+    asistente: document.getElementById('view-asistente') || document.getElementById('chat-container') || document.querySelector('.chat-section'),
+    metas: document.getElementById('view-metas') || document.getElementById('metas') || document.querySelector('.metas-container'),
+    prestado: document.getElementById('view-prestado')
+  };
+
+  // 3. Ocultar todas las secciones y mostrar solo la seleccionada
+  Object.keys(views).forEach(key => {
+    const el = views[key];
     if (el) {
-      el.style.display = (view === tabId) ? 'block' : 'none';
+      el.style.display = (key === tabId) ? 'block' : 'none';
     }
   });
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function abrirModalGastoRapido() {
