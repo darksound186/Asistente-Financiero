@@ -510,7 +510,8 @@ function bindAssistant(period){
     try {
       const systemContext = buildFinancialContext(period);
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      // Usando el modelo compatible gemini-1.5-flash
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -556,7 +557,6 @@ function bindAssistant(period){
     if (e.key === 'Enter') handleSend();
   });
 }
-
 function escapeHtml(str) {
   return str.replace(/[&<>"']/g, function(m) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
