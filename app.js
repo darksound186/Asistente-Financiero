@@ -11,14 +11,14 @@ function getGeminiKey() {
   return localStorage.getItem('gemini_api_key') || '';
 }
 
-function loadState(){
+async function loadState(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
     if(raw) state = JSON.parse(raw);
   }catch(e){ state = null; }
 }
 
-function saveState(){
+async function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
   catch(e){ console.error('No se pudo guardar', e); }
 }
@@ -56,11 +56,10 @@ function extraPoolTotal(period, cp){
 }
 
 function normalizePeriod(cp){
-  if(!cp.spent) cp.spent = {fijos:0,libre:0,extra:0};
+  if(!cp.spent) cp.spent = {fijos:0,libre:0};
   if(typeof cp.spent.extra !== 'number') cp.spent.extra = 0;
   if(!cp.extraExpenses) cp.extraExpenses = [];
   if(!cp.incomes) cp.incomes = [];
-  if(!cp.expenses) cp.expenses = [];
 }
 
 function getAllocations(){
@@ -114,9 +113,8 @@ function abrirModalGastoRapido() {
 function render(){
   const app = document.getElementById('app');
   const loading = document.getElementById('loading');
-  
-  if(loading) loading.style.display = 'none';
-  if(app) app.style.display = 'block';
+  if(loading) loading.classList.add('hidden');
+  if(app) app.classList.remove('hidden');
 
   if(!state){ if(app) app.innerHTML = renderSetup(null); bindSetup(); return; }
   if(!state.loans) state.loans = [];
@@ -269,6 +267,17 @@ function renderDashboard(period){
       <b>${fmt(ingresoTotal)}</b>
     </div>
 
+    <!-- Sección para Registrar Ingresos Extras -->
+    <div class="panel" style="margin-bottom: 16px;">
+      <h2>💰 Registrar Ingreso Extra</h2>
+      <div class="expense-form">
+        <input type="number" id="incAmount" placeholder="Monto extra">
+        <input type="text" id="incNote" placeholder="Concepto (ej. Trabajo freelance, regalo...)">
+        <button id="addIncome">Agregar Ingreso</button>
+      </div>
+      <div class="err" id="incErr"></div>
+    </div>
+
     <div class="buckets">
       <div class="bucket fijos ${fijosPct>=100?'over':''}">
         <div class="bucket-label">Obligaciones (fijos)</div>
@@ -312,6 +321,25 @@ function bindDashboard(){
       catSel.innerHTML = opts.map(c=>`<option value="${c}">${c}</option>`).join('');
     });
   }
+
+  // Lógica para registrar Ingreso Extra
+  document.getElementById('addIncome')?.addEventListener('click', ()=>{
+    const amount = Number(document.getElementById('incAmount').value);
+    const note = document.getElementById('incNote').value.trim();
+    const errEl = document.getElementById('incErr');
+
+    if(!amount || amount <= 0){
+      if(errEl) errEl.textContent = 'Ingresa un monto válido.';
+      return;
+    }
+
+    if(!state.currentPeriod.incomes) state.currentPeriod.incomes = [];
+    const id = Date.now().toString(36);
+    state.currentPeriod.incomes.push({ id, amount, note });
+
+    saveState();
+    render();
+  });
 
   document.getElementById('addExpense')?.addEventListener('click', ()=>{
     const bucket = bucketSel.value;
@@ -368,7 +396,7 @@ function renderExtra(period){
 }
 
 function bindExtra(period){
-  document.getElementById('addExtra')?.addEventListener('click', ()=>{
+  document.getElementById('addExtra')?.addEventListener('click', async ()=>{
     const amount = Number(document.getElementById('extraAmount').value);
     const note = document.getElementById('extraNote').value.trim();
     if(!amount || amount<=0) return;
@@ -379,7 +407,7 @@ function bindExtra(period){
     cp.extraExpenses.push({id, amount, note});
     cp.spent.extra += amount;
 
-    saveState();
+    await saveState();
     render();
   });
 }
@@ -406,13 +434,13 @@ function renderLoans(){
 }
 
 function bindLoans(){
-  document.getElementById('addLoan')?.addEventListener('click', ()=>{
+  document.getElementById('addLoan')?.addEventListener('click', async ()=>{
     const person = document.getElementById('loanPerson').value.trim();
     const amount = Number(document.getElementById('loanAmount').value);
     if(!person || !amount || amount<=0) return;
 
     state.loans.push({id: Date.now().toString(36), person, original:amount, returned:0, pending:amount, status:'Pendiente'});
-    saveState();
+    await saveState();
     render();
   });
 }
@@ -462,6 +490,8 @@ OTRO DETALLE:
 - Préstamos pendientes por cobrar: ${prestamosActivos}
 - Últimos gastos registrados:
 ${ultimosGastos}
+
+Analiza este contexto financiero completo para responder a las preguntas del usuario y darle buenas sugerencias.
 `;
 }
 
@@ -510,21 +540,21 @@ function bindAssistant(period){
     try {
       const systemContext = buildFinancialContext(period);
 
-      // Endpoint v1 con el modelo actual gemini-2.5-flash
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { text: `${systemContext}\n\nPregunta del usuario: ${userText}` }
-        ]
-      }
-    ]
-  })
-});
+      // Usando el modelo compatible gemini-1.5-flash
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: `${systemContext}\n\nPregunta del usuario: ${userText}` }
+              ]
+            }
+          ]
+        })
+      });
 
       const data = await response.json();
       const loadingEl = document.getElementById(loadingId);
@@ -557,6 +587,7 @@ function bindAssistant(period){
     if (e.key === 'Enter') handleSend();
   });
 }
+
 function escapeHtml(str) {
   return str.replace(/[&<>"']/g, function(m) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
@@ -564,19 +595,86 @@ function escapeHtml(str) {
 }
 
 function renderGoals(){
-  return `<div class="panel"><h2>Metas de Ahorro</h2><div class="empty">Próximamente...</div></div>`;
+  if (!state.goals) state.goals = [];
+
+  const goalsList = state.goals.length ? state.goals.map(g => {
+    const pct = Math.min(100, Math.round((g.saved / Math.max(1, g.target)) * 100));
+    return `
+      <div class="panel" style="margin-bottom: 12px;">
+        <div style="display:flex; justify-between; align-items:center; margin-bottom: 8px;">
+          <b style="font-size: 1.1rem;">🎯 ${escapeHtml(g.name)}</b>
+          <button class="del" data-goal-del="${g.id}">✕</button>
+        </div>
+        <div style="font-size: 0.9rem; color: #666; margin-bottom: 6px;">
+          Ahorrado: <b>${fmt(g.saved)}</b> de <b>${fmt(g.target)}</b> (${pct}%)
+        </div>
+        <div class="bar" style="margin-bottom: 12px;"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <div class="expense-form">
+          <input type="number" id="addSaved_${g.id}" placeholder="Abonar monto">
+          <button data-goal-add="${g.id}">Abonar</button>
+        </div>
+      </div>
+    `;
+  }).join('') : '<div class="empty">No tienes metas de ahorro registradas.</div>';
+
+  return `
+    <div class="panel" style="margin-bottom: 16px;">
+      <h2>🎯 Crear nueva meta de ahorro</h2>
+      <div class="expense-form">
+        <input type="text" id="goalName" placeholder="Ej: Viaje, Moto, Fondo de emergencia">
+        <input type="number" id="goalTarget" placeholder="Meta ($)">
+        <button id="addGoalBtn">Crear Meta</button>
+      </div>
+      <div class="err" id="goalErr"></div>
+    </div>
+    <h2>Tus Metas</h2>
+    ${goalsList}
+  `;
 }
 
-function bindGoals(){}
+function bindGoals(){
+  // Crear Meta
+  document.getElementById('addGoalBtn')?.addEventListener('click', ()=>{
+    const name = document.getElementById('goalName').value.trim();
+    const target = Number(document.getElementById('goalTarget').value);
+    const errEl = document.getElementById('goalErr');
 
-// Inicialización sincrónica inmediata
-function initApp() {
-  loadState();
-  render();
-}
+    if(!name || !target || target <= 0){
+      if(errEl) errEl.textContent = 'Ingresa un nombre y un monto objetivo válido.';
+      return;
+    }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp);
-} else {
-  initApp();
+    if(!state.goals) state.goals = [];
+    state.goals.push({ id: Date.now().toString(36), name, target, saved: 0 });
+
+    saveState();
+    render();
+  });
+
+  // Abonar a Meta
+  document.querySelectorAll('[data-goal-add]').forEach(btn => {
+    btn.addEventListener('click', ()=>{
+      const id = btn.getAttribute('data-goal-add');
+      const input = document.getElementById(`addSaved_${id}`);
+      const amount = Number(input?.value);
+      if(!amount || amount <= 0) return;
+
+      const goal = state.goals.find(g => g.id === id);
+      if(goal){
+        goal.saved += amount;
+        saveState();
+        render();
+      }
+    });
+  });
+
+  // Eliminar Meta
+  document.querySelectorAll('[data-goal-del]').forEach(btn => {
+    btn.addEventListener('click', ()=>{
+      const id = btn.getAttribute('data-goal-del');
+      state.goals = state.goals.filter(g => g.id !== id);
+      saveState();
+      render();
+    });
+  });
 }
