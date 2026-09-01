@@ -495,22 +495,6 @@ Analiza este contexto financiero completo para responder a las preguntas del usu
 `;
 }
 
-function renderAssistant(period){
-  return `
-    <div class="panel">
-      <h2>Asistente Financiero IA</h2>
-      <div class="sub">Analizando en tiempo real tu estado financiero del período.</div>
-      <div class="chat-log" id="chatLog">
-        <div class="bubble bot">¡Hola! Analicé tus finanzas de esta quincena. ¿En qué te puedo ayudar hoy?</div>
-      </div>
-      <div class="chat-input">
-        <input type="text" id="chatInput" placeholder="Ej: ¿Cuánto dinero me queda libre para salir?">
-        <button id="chatSendBtn">Enviar</button>
-      </div>
-    </div>
-  `;
-}
-
 function bindAssistant(period){
   const chatInput = document.getElementById('chatInput');
   const sendBtn = document.getElementById('chatSendBtn');
@@ -540,7 +524,7 @@ function bindAssistant(period){
     try {
       const systemContext = buildFinancialContext(period);
 
-      // Usando el modelo compatible gemini-1.5-flash
+      // Llamada directa al modelo usando la sintaxis oficial de v1beta
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -560,18 +544,29 @@ function bindAssistant(period){
       const loadingEl = document.getElementById(loadingId);
 
       if (!response.ok) {
-        console.error('Error API Gemini:', data);
-        if (loadingEl) {
-          loadingEl.textContent = `Error API (${response.status}): ${data.error?.message || 'Revisa tu API Key en Ajustes'}`;
+        // Si el modelo 1.5-flash no estuviera disponible, intentar respaldo con gemini-2.5-flash
+        const fallbackResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta del usuario: ${userText}` }] }]
+          })
+        });
+        
+        const fallbackData = await fallbackResponse.json();
+        if (!fallbackResponse.ok) {
+          if (loadingEl) loadingEl.textContent = `Error API (${fallbackResponse.status}): ${fallbackData.error?.message || 'Verifica tu API Key en Ajustes.'}`;
+          return;
         }
+        
+        const fallbackReply = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude interpretar la respuesta.';
+        if (loadingEl) loadingEl.textContent = fallbackReply;
         return;
       }
 
-      const botReply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude interpretar la respuesta del modelo.';
+      const botReply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude interpretar la respuesta.';
+      if (loadingEl) loadingEl.textContent = botReply;
 
-      if (loadingEl) {
-        loadingEl.textContent = botReply;
-      }
     } catch (err) {
       console.error(err);
       const loadingEl = document.getElementById(loadingId);
