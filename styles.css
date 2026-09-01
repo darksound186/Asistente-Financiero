@@ -204,15 +204,27 @@ input, textarea, .chat-message, .selectable {
   user-select: text;
 }
 
-/* Ajustes responsive para pantallas móviles (< 768px) */
+/* Corrección de escala y visualización móvil */
 @media (max-width: 767px) {
-  /* Contenedores principales ocupan el ancho completo */
-  .container, .main-content, .dashboard-grid {
-    width: 100% !important;
-    padding-left: 12px !important;
-    padding-right: 12px !important;
-    box-sizing: border-box;
+  html, body {
+    width: 100%;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
   }
+
+  .wrap, #view-inicio, #view-prestado {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 12px !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Margen inferior para que la barra no tape el contenido */
+  body {
+    padding-bottom: 80px !important;
+  }
+
 
   /* Ajuste de tarjetas financieras para tarjetas apiladas en móvil */
   .cards-grid, .summary-cards {

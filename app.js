@@ -1814,7 +1814,7 @@ function bindImport(){
 })();
 
 function switchMobileTab(tabId) {
-  // 1. Actualizar estado activo en los botones de la barra inferior
+  // 1. Resaltar botón activo en la barra inferior
   const items = document.querySelectorAll('.mobile-nav-item');
   items.forEach(item => item.classList.remove('active'));
 
@@ -1823,27 +1823,25 @@ function switchMobileTab(tabId) {
   );
   if (activeBtn) activeBtn.classList.add('active');
 
-  // 2. Elementos principales
   const wrapPrincipal = document.querySelector('.wrap');
   const viewPrestado = document.getElementById('view-prestado');
 
-  // 3. Control de vistas
+  // 2. Alternar entre la vista de Préstamos y la app principal
   if (tabId === 'prestado') {
     if (wrapPrincipal) wrapPrincipal.style.display = 'none';
     if (viewPrestado) viewPrestado.style.display = 'block';
   } else {
-    // Si presiona Inicio, Finanzas, Asistente, etc., muestra el contenido principal cargado por JS
     if (wrapPrincipal) wrapPrincipal.style.display = 'block';
     if (viewPrestado) viewPrestado.style.display = 'none';
 
-    // Si tu app renderiza secciones específicas dentro de #app, las busca por clase o ID
-    const targetSection = document.getElementById(`view-${tabId}`) || document.querySelector(`.${tabId}`);
+    // 3. Buscar y desplazarse hacia la sección interna correspondiente si existe
+    const targetSection = document.getElementById(tabId) || document.querySelector(`.${tabId}`);
     if (targetSection) {
-      targetSection.scrollIntoView({ behavior: 'smooth' });
+      targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }
-
-  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function abrirModalGastoRapido() {
