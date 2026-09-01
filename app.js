@@ -1814,25 +1814,69 @@ function bindImport(){
 })();
 
 function switchMobileTab(tabId) {
-  // 1. Marcar botón activo
+  // 1. Resaltar botón activo en la barra inferior
   const items = document.querySelectorAll('.mobile-nav-item');
   items.forEach(item => item.classList.remove('active'));
-  
+
   const activeBtn = Array.from(items).find(item => 
     item.getAttribute('onclick') && item.getAttribute('onclick').includes(`'${tabId}'`)
   );
   if (activeBtn) activeBtn.classList.add('active');
 
+  // Control para la vista externa de Préstamos PWA
   const wrapPrincipal = document.querySelector('.wrap');
   const viewPrestado = document.getElementById('view-prestado');
 
-  // 2. Si es Prestado, ocultamos la app principal y mostramos préstamos
   if (tabId === 'prestado') {
-    if (wrapPrincipal) wrapPrincipal.style.display = 'none';
-    if (viewPrestado) viewPrestado.style.display = 'block';
+    // Si tu app ya tiene pestaña interna de préstamos, busca hacerle click primero
+    const tabInterna = findTabByName('préstamos') || findTabByName('prestado');
+    if (tabInterna) {
+      if (wrapPrincipal) wrapPrincipal.style.display = 'block';
+      if (viewPrestado) viewPrestado.style.display = 'none';
+      tabInterna.click();
+    } else if (viewPrestado) {
+      if (wrapPrincipal) wrapPrincipal.style.display = 'none';
+      viewPrestado.style.display = 'block';
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
+
+  // Para el resto de pestañas
+  if (wrapPrincipal) wrapPrincipal.style.display = 'block';
+  if (viewPrestado) viewPrestado.style.display = 'none';
+
+  // Buscar y activar las pestañas existentes en la interfaz
+  const targetMap = {
+    inicio: ['quincena', 'inicio', 'resumen'],
+    finanzas: ['sin comprometer', 'finanzas', 'gastos', 'presupuesto'],
+    asistente: ['asistente', 'chat', 'agente'],
+    metas: ['metas', 'ahorro', 'objetivos']
+  };
+
+  const keywords = targetMap[tabId] || [tabId];
+  let tabEncontrada = null;
+
+  for (const kw of keywords) {
+    tabEncontrada = findTabByName(kw);
+    if (tabEncontrada) break;
+  }
+
+  if (tabEncontrada) {
+    tabEncontrada.click();
+  }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Función auxiliar para simular click en las pestañas nativas de la web
+function findTabByName(name) {
+  const allTabs = document.querySelectorAll('.tab, [class*="tab"], button, nav a');
+  return Array.from(allTabs).find(el => 
+    el.textContent.trim().toLowerCase().includes(name.toLowerCase()) &&
+    !el.classList.contains('mobile-nav-item')
+  );
+}
 
   // 3. Para cualquier otra pestaña, mostramos la app principal y ocultamos préstamos
   if (wrapPrincipal) wrapPrincipal.style.display = 'block';
@@ -1863,7 +1907,7 @@ function switchMobileTab(tabId) {
   } else {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-}
+
 
 function abrirModalGastoRapido() {
   // Si ya existe una función o modal de registro de gasto en tu app, la reutiliza
