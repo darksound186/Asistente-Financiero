@@ -7,18 +7,9 @@ const CATS = {
   libre: ['Transporte','Comida fuera','Gastos hormiga','Entretenimiento','Suscripciones','Ropa','Otro libre']
 };
 
-const CAT_RULES = [
-  [/arriendo|canon/i,'fijos','Arriendo'],
-  [/eps|farmacia|drogueria|droguería|medic/i,'fijos','Salud'],
-  [/gasolina|combustible|estacion de servicio|terpel|esso|primax/i,'fijos','Gasolina/moto'],
-  [/uber|didi|cabify|taxi|transmilenio|sitp|parqueadero/i,'libre','Transporte'],
-  [/rappi|domicil|ifood|\bcomida\b/i,'libre','Comida fuera'],
-  [/netflix|spotify|hbo|disney|amazon prime|youtube|claro video/i,'libre','Suscripciones'],
-  [/\bexito\b|\bd1\b|\bara\b|carulla|jumbo|supermercado|mercado/i,'fijos','Mercado'],
-  [/matricula|colegio|universidad|pension/i,'fijos','Educación'],
-  [/luz|agua|gas natural|internet|claro|movistar|tigo|une/i,'fijos','Servicios'],
-  [/cuota|prestamo|préstamo|tarjeta de credito|tarjeta de crédito|libranza/i,'fijos','Deudas'],
-];
+function getGeminiKey() {
+  return localStorage.getItem('gemini_api_key') || '';
+}
 
 async function loadState(){
   try{
@@ -142,9 +133,9 @@ function render(){
       <button class="tab ${currentTab==='dashboard'?'active':''}" data-tab="dashboard">${freq==='mensual'?'Mes':'Quincena'}</button>
       <button class="tab ${currentTab==='extra'?'active':''}" data-tab="extra">Sin comprometer</button>
       <button class="tab ${currentTab==='loans'?'active':''}" data-tab="loans">🤝 Préstamos</button>
-      <button class="tab ${currentTab==='assistant'?'active':''}" data-tab="assistant">Asistente</button>
+      <button class="tab ${currentTab==='assistant'?'active':''}" data-tab="assistant">🤖 Asistente</button>
       <button class="tab ${currentTab==='goals'?'active':''}" data-tab="goals">Metas</button>
-      <button class="tab ${currentTab==='settings'?'active':''}" data-tab="settings">Ajustes</button>
+      <button class="tab ${currentTab==='settings'?'active':''}" data-tab="settings">⚙️ Ajustes</button>
     </div>
     <div id="tabContent"></div>
   `;
@@ -163,14 +154,13 @@ function render(){
 function renderSetup(prefill){
   const s = prefill || {salary:950000, payDay:15, fijosMensual:710000, variablesMensual:300000, payFrequency:'quincenal'};
   const freq = s.payFrequency || 'quincenal';
-  const apiKeyGuardada = getGeminiKey();
+  const apiKey = getGeminiKey();
+
   return `
     <div class="panel" id="setupPanel">
       <h2>${state ? 'Ajustar tu sistema' : 'Arma tu sistema financiero'}</h2>
       <div class="field">
         <label>¿Cómo te pagan?</label>
-        <label>Gemini API Key</label>
-        <input type="password" id="inApiKey" value="${apiKeyGuardada}" placeholder="AIzaSy...">
         <div class="freq-toggle" id="freqToggle">
           <button type="button" class="freqBtn ${freq==='quincenal'?'active':''}" data-freq="quincenal">Quincenal</button>
           <button type="button" class="freqBtn ${freq==='mensual'?'active':''}" data-freq="mensual">Mensual</button>
@@ -181,6 +171,10 @@ function renderSetup(prefill){
       <div class="row2">
         <div class="field"><label>Gastos fijos al mes</label><input type="number" id="inFijos" value="${s.fijosMensual}"></div>
         <div class="field"><label>Gastos variables al mes</label><input type="number" id="inVar" value="${s.variablesMensual}"></div>
+      </div>
+      <div class="field">
+        <label>Gemini API Key (para el Asistente IA)</label>
+        <input type="password" id="inApiKey" value="${apiKey}" placeholder="Pega tu API Key de Google AI Studio">
       </div>
       <button class="btn" id="saveSetup">Guardar</button>
       <div class="err" id="setupErr"></div>
@@ -202,13 +196,14 @@ function bindSetup(){
     const cutoff = Number(document.getElementById('inCutoff').value);
     const fijosMensual = Number(document.getElementById('inFijos').value);
     const variablesMensual = Number(document.getElementById('inVar').value);
-    const errEl = document.getElementById('setupErr');  
-const apiKey = document.getElementById('inApiKey').value.trim();
-if (apiKey) {
-  localStorage.setItem('gemini_api_key', apiKey);
-}
+    const apiKey = document.getElementById('inApiKey').value.trim();
+    const errEl = document.getElementById('setupErr');
 
     if(!salary || salary<=0){ errEl.textContent = 'Ingresa un sueldo válido.'; return; }
+
+    if(apiKey) {
+      localStorage.setItem('gemini_api_key', apiKey);
+    }
 
     const wasSetUp = !!state;
     state = state || {history:[], currentPeriod:null, goals:[], loans:[]};
@@ -388,6 +383,13 @@ function bindExtra(period){
 }
 
 function renderLoans(){
+  const loansHtml = (state.loans && state.loans.length) ? state.loans.map(l => `
+    <li>
+      <span><b>${l.person}</b> - Pendiente: ${fmt(l.pending)}</span>
+      <span class="tag">${l.status}</span>
+    </li>
+  `).join('') : '<div class="empty">No tienes préstamos registrados.</div>';
+
   return `
     <div class="panel">
       <h2>Préstamos</h2>
@@ -396,6 +398,7 @@ function renderLoans(){
         <div class="field"><label>Monto</label><input type="number" id="loanAmount" placeholder="Monto"></div>
       </div>
       <button class="btn" id="addLoan">Registrar Préstamo</button>
+      <ul class="moves" style="margin-top:16px;">${loansHtml}</ul>
     </div>
   `;
 }
@@ -412,46 +415,6 @@ function bindLoans(){
   });
 }
 
-function renderAssistant(period){
-  return `
-    <div class="panel">
-      <h2>Tu asistente financiero</h2>
-      <div class="chat-log"><div class="bubble bot">¡Hola Darik! ¿En qué te ayudo hoy con tus finanzas?</div></div>
-      <div class="chat-input">
-        <input type="text" placeholder="Pregúntame algo...">
-        <button>Enviar</button>
-      </div>
-    </div>
-  `;
-}
-
-function bindAssistant(period){}
-const apiKey = getGeminiKey();
-if (!apiKey) {
-  loadingEl.textContent = 'Por favor configura tu Gemini API Key en la pestaña Ajustes.';
-  return;
-}
-
-const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-  // ... resto del fetch igual ...
-});
-
-function renderGoals(){
-  return `<div class="panel"><h2>Metas de Ahorro</h2><div class="empty">No tienes metas configuradas.</div></div>`;
-}
-
-function bindGoals(){}
-
-window.addEventListener('DOMContentLoaded', async () => {
-  await loadState();
-  render();
-});
-// Configuración de la API (Puedes usar Gemini o la API de tu preferencia)
-// Obtiene la API Key guardada localmente en el navegador
-function getGeminiKey() {
-  return localStorage.getItem('gemini_api_key') || '';
-} 
-
 function buildFinancialContext(period) {
   const alloc = getAllocations();
   const cp = state.currentPeriod;
@@ -464,23 +427,21 @@ function buildFinancialContext(period) {
   const extraTotal = extraPoolTotal(period, cp);
   const extraDisp = extraTotal - cp.spent.extra;
 
-  // Resumen de préstamos activos
   const prestamosActivos = (state.loans || [])
     .filter(l => l.pending > 0)
     .map(l => `${l.person}: debe ${fmt(l.pending)}`)
     .join(', ') || 'Ninguno';
 
-  // Desglose de los últimos 5 gastos
   const ultimosGastos = (cp.expenses || [])
     .slice(-5)
     .map(e => `- ${e.category} (${e.bucket}): ${fmt(e.amount)} ${e.note ? '('+e.note+')' : ''}`)
     .join('\n') || 'Sin gastos recientes';
 
   return `
-Eres el asistente financiero personal de Darik en su aplicación PWA "Control Quincenal".
+Eres el asistente financiero personal en la app "Control Quincenal".
 Responde de forma concisa, empática, clara y muy práctica. Utiliza pesos colombianos (COP).
 
-ESTADO FINANCIERO ACTUAL DE DARIK (${period.label}):
+ESTADO FINANCIERO ACTUAL DEL USUARIO (${period.label}):
 - Frecuencia de pago: ${state.payFrequency || 'quincenal'}
 - Sueldo base del período: ${fmt(state.salary)}
 - Ingresos adicionales este período: ${fmt(ingresoExtra)}
@@ -504,23 +465,23 @@ Analiza este contexto financiero completo para responder a las preguntas del usu
 `;
 }
 
-function renderAssistant(period) {
+function renderAssistant(period){
   return `
     <div class="panel">
       <h2>Asistente Financiero IA</h2>
       <div class="sub">Analizando en tiempo real tu estado financiero del período.</div>
       <div class="chat-log" id="chatLog">
-        <div class="bubble bot">¡Hola Darik! Analicé tus finanzas de esta quincena. ¿En qué te puedo ayudar hoy?</div>
+        <div class="bubble bot">¡Hola! Analicé tus finanzas de esta quincena. ¿En qué te puedo ayudar hoy?</div>
       </div>
       <div class="chat-input">
-        <input type="text" id="chatInput" placeholder="Ej: ¿Cuánto me queda disponible para salir el fin de semana?">
+        <input type="text" id="chatInput" placeholder="Ej: ¿Cuánto dinero me queda libre para salir?">
         <button id="chatSendBtn">Enviar</button>
       </div>
     </div>
   `;
 }
 
-function bindAssistant(period) {
+function bindAssistant(period){
   const chatInput = document.getElementById('chatInput');
   const sendBtn = document.getElementById('chatSendBtn');
   const chatLog = document.getElementById('chatLog');
@@ -531,21 +492,25 @@ function bindAssistant(period) {
     const userText = chatInput.value.trim();
     if (!userText) return;
 
-    // Mostrar mensaje del usuario
     chatLog.innerHTML += `<div class="bubble user">${escapeHtml(userText)}</div>`;
     chatInput.value = '';
     chatLog.scrollTop = chatLog.scrollHeight;
 
-    // Indicador de carga
     const loadingId = 'loading-' + Date.now();
     chatLog.innerHTML += `<div class="bubble bot" id="${loadingId}">Pensando y calculando...</div>`;
     chatLog.scrollTop = chatLog.scrollHeight;
 
+    const apiKey = getGeminiKey();
+    if (!apiKey) {
+      const loadingEl = document.getElementById(loadingId);
+      if (loadingEl) loadingEl.textContent = 'Por favor configura tu Gemini API Key en la pestaña Ajustes (⚙️).';
+      return;
+    }
+
     try {
       const systemContext = buildFinancialContext(period);
 
-      // Llamada a la API de Gemini 1.5 Flash
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -572,7 +537,7 @@ function bindAssistant(period) {
       console.error(err);
       const loadingEl = document.getElementById(loadingId);
       if (loadingEl) {
-        loadingEl.textContent = 'Hubo un problema conectando con el servicio de IA. Revisa tu conexión o tu API Key.';
+        loadingEl.textContent = 'Hubo un problema conectando con Gemini. Revisa tu API Key en la pestaña Ajustes.';
       }
     }
     chatLog.scrollTop = chatLog.scrollHeight;
@@ -589,3 +554,14 @@ function escapeHtml(str) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
   });
 }
+
+function renderGoals(){
+  return `<div class="panel"><h2>Metas de Ahorro</h2><div class="empty">Próximamente...</div></div>`;
+}
+
+function bindGoals(){}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadState();
+  render();
+});
