@@ -204,26 +204,41 @@ input, textarea, .chat-message, .selectable {
   user-select: text;
 }
 
-/* Corrección de escala y visualización móvil */
-@media (max-width: 767px) {
-  html, body {
-    width: 100%;
-    overflow-x: hidden;
-    margin: 0;
-    padding: 0;
+/* Ajuste de pantalla para PWA en móviles */
+@media (max-width: 768px) {
+  body {
+    padding-bottom: 90px !important; /* Espacio para que la barra inferior no tape el contenido */
   }
 
-  .wrap, #view-inicio, #view-prestado {
+  .wrap {
     width: 100% !important;
     max-width: 100% !important;
-    padding: 12px !important;
+    padding: 15px !important;
     box-sizing: border-box !important;
   }
 
-  /* Margen inferior para que la barra no tape el contenido */
-  body {
-    padding-bottom: 80px !important;
+  /* Asegurar que las tarjetas y contenedores ocupen el ancho de la pantalla */
+  #app, #view-prestado {
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
+
+  /* La barra de navegación fija abajo */
+  .mobile-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 65px;
+    background: #0f172a;
+    border-top: 1px solid #334155;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 9999;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
 
 
   /* Ajuste de tarjetas financieras para tarjetas apiladas en móvil */
@@ -259,7 +274,7 @@ input, textarea, .chat-message, .selectable {
   .modal {
     align-items: flex-end !important;
   }
-}
+
 
 /* Mantener comportamiento intacto para escritorio (>= 768px) */
 @media (min-width: 768px) {

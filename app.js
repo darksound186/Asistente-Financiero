@@ -1814,10 +1814,10 @@ function bindImport(){
 })();
 
 function switchMobileTab(tabId) {
-  // 1. Resaltar botón activo en la barra inferior
+  // 1. Marcar botón activo
   const items = document.querySelectorAll('.mobile-nav-item');
   items.forEach(item => item.classList.remove('active'));
-
+  
   const activeBtn = Array.from(items).find(item => 
     item.getAttribute('onclick') && item.getAttribute('onclick').includes(`'${tabId}'`)
   );
@@ -1826,21 +1826,42 @@ function switchMobileTab(tabId) {
   const wrapPrincipal = document.querySelector('.wrap');
   const viewPrestado = document.getElementById('view-prestado');
 
-  // 2. Alternar entre la vista de Préstamos y la app principal
+  // 2. Si es Prestado, ocultamos la app principal y mostramos préstamos
   if (tabId === 'prestado') {
     if (wrapPrincipal) wrapPrincipal.style.display = 'none';
     if (viewPrestado) viewPrestado.style.display = 'block';
-  } else {
-    if (wrapPrincipal) wrapPrincipal.style.display = 'block';
-    if (viewPrestado) viewPrestado.style.display = 'none';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
 
-    // 3. Buscar y desplazarse hacia la sección interna correspondiente si existe
-    const targetSection = document.getElementById(tabId) || document.querySelector(`.${tabId}`);
-    if (targetSection) {
-      targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+  // 3. Para cualquier otra pestaña, mostramos la app principal y ocultamos préstamos
+  if (wrapPrincipal) wrapPrincipal.style.display = 'block';
+  if (viewPrestado) viewPrestado.style.display = 'none';
+
+  // 4. Si es 'inicio', subimos arriba del todo
+  if (tabId === 'inicio') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+
+  // 5. Para 'finanzas', 'asistente' o 'metas', buscamos el texto o sección dentro del HTML inyectado
+  const appContainer = document.getElementById('app');
+  if (!appContainer) return;
+
+  // Busca encabezados o divs que contengan palabras clave
+  const headers = Array.from(appContainer.querySelectorAll('h1, h2, h3, h4, .card, div'));
+  const targetElement = headers.find(el => {
+    const text = el.textContent.toLowerCase();
+    if (tabId === 'finanzas') return text.includes('gastos') || text.includes('presupuesto') || text.includes('quincena');
+    if (tabId === 'asistente') return text.includes('asistente') || text.includes('chat') || text.includes('agente');
+    if (tabId === 'metas') return text.includes('meta') || text.includes('ahorro');
+    return false;
+  });
+
+  if (targetElement) {
+    targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 }
 
