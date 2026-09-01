@@ -101,6 +101,26 @@ function archiveIfNeeded(period){
   }
 }
 
+// Helper universal para eventos de click/tap sin duplicados en móviles
+function bindTouch(elementId, handler) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  
+  let handled = false;
+  const execute = (e) => {
+    if (e.type === 'touchstart' || e.type === 'touchend') {
+      e.preventDefault();
+    }
+    if (handled) return;
+    handled = true;
+    setTimeout(() => { handled = false; }, 350);
+    handler(e);
+  };
+
+  el.addEventListener('touchend', execute, { passive: false });
+  el.addEventListener('click', execute);
+}
+
 function render(){
   const app = document.getElementById('app');
   const loading = document.getElementById('loading');
@@ -118,8 +138,8 @@ function render(){
   saveState();
 
   const freq = state.payFrequency || 'quincenal';
-  
   const userName = state.userName || '';
+  
   const titleEl = document.getElementById('mainTitle');
   if(titleEl) {
     titleEl.textContent = freq==='mensual' ? 'Mes en curso' : 'Quincena en curso';
@@ -152,11 +172,13 @@ function render(){
   `;
 
   document.querySelectorAll('.tab').forEach(t=>{
-    t.addEventListener('click', (e)=>{ 
+    const changeTab = (e) => {
       e.preventDefault();
-      currentTab=t.getAttribute('data-tab'); 
-      render(); 
-    });
+      currentTab = t.getAttribute('data-tab');
+      render();
+    };
+    t.addEventListener('touchend', changeTab, { passive: false });
+    t.addEventListener('click', changeTab);
   });
 
   const tc = document.getElementById('tabContent');
@@ -206,15 +228,16 @@ function renderSetup(prefill){
 function bindSetup(){
   let selectedFreq = document.querySelector('.freqBtn.active')?.getAttribute('data-freq') || 'quincenal';
   document.querySelectorAll('.freqBtn').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
+    const toggleFreq = (e) => {
       e.preventDefault();
       selectedFreq = btn.getAttribute('data-freq');
       document.querySelectorAll('.freqBtn').forEach(b=>b.classList.toggle('active', b===btn));
-    });
+    };
+    btn.addEventListener('touchend', toggleFreq, { passive: false });
+    btn.addEventListener('click', toggleFreq);
   });
 
-  document.getElementById('saveSetup')?.addEventListener('click', (e)=>{
-    e.preventDefault();
+  bindTouch('saveSetup', () => {
     const userName = document.getElementById('inUserName').value.trim();
     const salary = Number(document.getElementById('inSalary').value);
     const cutoff = Number(document.getElementById('inCutoff').value);
@@ -356,26 +379,7 @@ function bindDashboard(){
     });
   }
 
-  // Helper para registrar eventos de click y touch sin duplicar
-  function addTouchListener(elementId, handler) {
-    const el = document.getElementById(elementId);
-    if (!el) return;
-    
-    let handled = false;
-    const execute = (e) => {
-      e.preventDefault();
-      if (handled) return;
-      handled = true;
-      setTimeout(() => { handled = false; }, 300);
-      handler(e);
-    };
-
-    el.addEventListener('touchend', execute, { passive: false });
-    el.addEventListener('click', execute);
-  }
-
-  // Evento agregar ingreso
-  addTouchListener('addIncome', () => {
+  bindTouch('addIncome', () => {
     const amount = Number(document.getElementById('incAmount').value);
     const note = document.getElementById('incNote').value.trim();
     const errEl = document.getElementById('incErr');
@@ -393,8 +397,7 @@ function bindDashboard(){
     render();
   });
 
-  // Evento agregar gasto
-  addTouchListener('addExpense', () => {
+  bindTouch('addExpense', () => {
     const bucket = bucketSel.value;
     const category = catSel.value;
     const amount = Number(document.getElementById('expAmount').value);
@@ -411,13 +414,18 @@ function bindDashboard(){
     render();
   });
 
-  // Delegación de eventos para borrar items en móvil
-  const appEl = document.getElementById('app');
-  if(appEl) {
+  // Delegación de eventos para eliminar
+  const tc = document.getElementById('tabContent');
+  if(tc) {
+    let handled = false;
     const handleDelete = (e) => {
       const btnInc = e.target.closest('.del[data-inc-id]');
       if (btnInc) {
-        e.preventDefault();
+        if (e.type === 'touchend') e.preventDefault();
+        if (handled) return;
+        handled = true;
+        setTimeout(() => { handled = false; }, 350);
+
         const id = btnInc.getAttribute('data-inc-id');
         const idx = (state.currentPeriod.incomes||[]).findIndex(i=>i.id===id);
         if(idx > -1){
@@ -430,7 +438,11 @@ function bindDashboard(){
 
       const btnExp = e.target.closest('.del[data-id]');
       if (btnExp) {
-        e.preventDefault();
+        if (e.type === 'touchend') e.preventDefault();
+        if (handled) return;
+        handled = true;
+        setTimeout(() => { handled = false; }, 350);
+
         const id = btnExp.getAttribute('data-id');
         const idx = state.currentPeriod.expenses.findIndex(e=>e.id===id);
         if(idx>-1){
@@ -442,74 +454,9 @@ function bindDashboard(){
       }
     };
 
-    appEl.addEventListener('touchend', handleDelete, { passive: false });
-    appEl.addEventListener('click', handleDelete);
+    tc.addEventListener('touchend', handleDelete, { passive: false });
+    tc.addEventListener('click', handleDelete);
   }
-}
-
-  document.getElementById('addIncome')?.addEventListener('click', (e)=>{
-    e.preventDefault();
-    const amount = Number(document.getElementById('incAmount').value);
-    const note = document.getElementById('incNote').value.trim();
-    const errEl = document.getElementById('incErr');
-
-    if(!amount || amount <= 0){
-      if(errEl) errEl.textContent = 'Ingresa un monto válido.';
-      return;
-    }
-
-    if(!state.currentPeriod.incomes) state.currentPeriod.incomes = [];
-    const id = Date.now().toString(36);
-    state.currentPeriod.incomes.push({ id, amount, note });
-
-    saveState();
-    render();
-  });
-
-  document.querySelectorAll('.del[data-inc-id]').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      const id = btn.getAttribute('data-inc-id');
-      const idx = (state.currentPeriod.incomes||[]).findIndex(i=>i.id===id);
-      if(idx > -1){
-        state.currentPeriod.incomes.splice(idx,1);
-        saveState();
-        render();
-      }
-    });
-  });
-
-  document.getElementById('addExpense')?.addEventListener('click', (e)=>{
-    e.preventDefault();
-    const bucket = bucketSel.value;
-    const category = catSel.value;
-    const amount = Number(document.getElementById('expAmount').value);
-    const note = document.getElementById('expNote').value.trim();
-    const errEl = document.getElementById('expErr');
-
-    if(!amount || amount<=0){ errEl.textContent='Ingresa un monto válido.'; return; }
-
-    const id = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    state.currentPeriod.expenses.push({id, bucket, amount, note, category});
-    state.currentPeriod.spent[bucket] += amount;
-
-    saveState();
-    render();
-  });
-
-  document.querySelectorAll('.del[data-id]').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      const id = btn.getAttribute('data-id');
-      const idx = state.currentPeriod.expenses.findIndex(e=>e.id===id);
-      if(idx>-1){
-        state.currentPeriod.spent[state.currentPeriod.expenses[idx].bucket] -= state.currentPeriod.expenses[idx].amount;
-        state.currentPeriod.expenses.splice(idx,1);
-        saveState(); 
-        render();
-      }
-    });
-  });
 }
 
 function renderExtra(period){
@@ -536,8 +483,7 @@ function renderExtra(period){
 }
 
 function bindExtra(period){
-  document.getElementById('addExtra')?.addEventListener('click', (e)=>{
-    e.preventDefault();
+  bindTouch('addExtra', () => {
     const amount = Number(document.getElementById('extraAmount').value);
     const note = document.getElementById('extraNote').value.trim();
     if(!amount || amount<=0) return;
@@ -583,8 +529,7 @@ function renderLoans(){
 }
 
 function bindLoans(){
-  document.getElementById('addLoan')?.addEventListener('click', (e)=>{
-    e.preventDefault();
+  bindTouch('addLoan', () => {
     const person = document.getElementById('loanPerson').value.trim();
     const amount = Number(document.getElementById('loanAmount').value);
     if(!person || !amount || amount<=0) return;
@@ -601,28 +546,44 @@ function bindLoans(){
     render();
   });
 
-  document.querySelectorAll('[data-loan-toggle]').forEach(btn => {
-    btn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      const id = btn.getAttribute('data-loan-toggle');
-      const loan = state.loans.find(l => l.id === id);
-      if(loan){
-        loan.status = loan.status === 'Pagado' ? 'Pendiente' : 'Pagado';
+  const tc = document.getElementById('tabContent');
+  if(tc) {
+    let handled = false;
+    const handleLoanActions = (e) => {
+      const toggleBtn = e.target.closest('[data-loan-toggle]');
+      if (toggleBtn) {
+        if (e.type === 'touchend') e.preventDefault();
+        if (handled) return;
+        handled = true;
+        setTimeout(() => { handled = false; }, 350);
+
+        const id = toggleBtn.getAttribute('data-loan-toggle');
+        const loan = state.loans.find(l => l.id === id);
+        if(loan){
+          loan.status = loan.status === 'Pagado' ? 'Pendiente' : 'Pagado';
+          saveState();
+          render();
+        }
+        return;
+      }
+
+      const delBtn = e.target.closest('[data-loan-del]');
+      if (delBtn) {
+        if (e.type === 'touchend') e.preventDefault();
+        if (handled) return;
+        handled = true;
+        setTimeout(() => { handled = false; }, 350);
+
+        const id = delBtn.getAttribute('data-loan-del');
+        state.loans = state.loans.filter(l => l.id !== id);
         saveState();
         render();
       }
-    });
-  });
+    };
 
-  document.querySelectorAll('[data-loan-del]').forEach(btn => {
-    btn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      const id = btn.getAttribute('data-loan-del');
-      state.loans = state.loans.filter(l => l.id !== id);
-      saveState();
-      render();
-    });
-  });
+    tc.addEventListener('touchend', handleLoanActions, { passive: false });
+    tc.addEventListener('click', handleLoanActions);
+  }
 }
 
 function buildFinancialContext(period) {
@@ -693,10 +654,7 @@ function renderAssistant(period){
 
 function bindAssistant(period){
   const chatInput = document.getElementById('chatInput');
-  const sendBtn = document.getElementById('chatSendBtn');
   const chatLog = document.getElementById('chatLog');
-
-  if (!chatInput || !sendBtn || !chatLog) return;
 
   async function handleSend() {
     const userText = chatInput.value.trim();
@@ -759,8 +717,8 @@ function bindAssistant(period){
     chatLog.scrollTop = chatLog.scrollHeight;
   }
 
-  sendBtn.addEventListener('click', (e)=>{ e.preventDefault(); handleSend(); });
-  chatInput.addEventListener('keypress', (e) => {
+  bindTouch('chatSendBtn', handleSend);
+  chatInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); handleSend(); }
   });
 }
@@ -804,8 +762,7 @@ function renderGoals(){
 }
 
 function bindGoals(){
-  document.getElementById('addGoalBtn')?.addEventListener('click', (e)=>{
-    e.preventDefault();
+  bindTouch('addGoalBtn', () => {
     const name = document.getElementById('goalName').value.trim();
     const target = Number(document.getElementById('goalTarget').value);
     const errEl = document.getElementById('goalErr');
@@ -822,32 +779,48 @@ function bindGoals(){
     render();
   });
 
-  document.querySelectorAll('[data-goal-add]').forEach(btn => {
-    btn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      const id = btn.getAttribute('data-goal-add');
-      const input = document.getElementById(`addSaved_${id}`);
-      const amount = Number(input?.value);
-      if(!amount || amount <= 0) return;
+  const tc = document.getElementById('tabContent');
+  if(tc) {
+    let handled = false;
+    const handleGoalActions = (e) => {
+      const addBtn = e.target.closest('[data-goal-add]');
+      if (addBtn) {
+        if (e.type === 'touchend') e.preventDefault();
+        if (handled) return;
+        handled = true;
+        setTimeout(() => { handled = false; }, 350);
 
-      const goal = state.goals.find(g => g.id === id);
-      if(goal){
-        goal.saved += amount;
+        const id = addBtn.getAttribute('data-goal-add');
+        const input = document.getElementById(`addSaved_${id}`);
+        const amount = Number(input?.value);
+        if(!amount || amount <= 0) return;
+
+        const goal = state.goals.find(g => g.id === id);
+        if(goal){
+          goal.saved += amount;
+          saveState();
+          render();
+        }
+        return;
+      }
+
+      const delBtn = e.target.closest('[data-goal-del]');
+      if (delBtn) {
+        if (e.type === 'touchend') e.preventDefault();
+        if (handled) return;
+        handled = true;
+        setTimeout(() => { handled = false; }, 350);
+
+        const id = delBtn.getAttribute('data-goal-del');
+        state.goals = state.goals.filter(g => g.id !== id);
         saveState();
         render();
       }
-    });
-  });
+    };
 
-  document.querySelectorAll('[data-goal-del]').forEach(btn => {
-    btn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      const id = btn.getAttribute('data-goal-del');
-      state.goals = state.goals.filter(g => g.id !== id);
-      saveState();
-      render();
-    });
-  });
+    tc.addEventListener('touchend', handleGoalActions, { passive: false });
+    tc.addEventListener('click', handleGoalActions);
+  }
 }
 
 function escapeHtml(str) {

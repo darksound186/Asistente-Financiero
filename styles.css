@@ -308,3 +308,15 @@ h1 {
   background-color: #e8f5e9;
   color: #2e7d32;
 }
+/* Ajustes para toque táctil en móviles */
+button, input, select {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+  z-index: 10;
+}
+
+button {
+  min-height: 44px; /* Tamaño mínimo recomendado por Google/Apple para pantallas táctiles */
+  cursor: pointer;
+}
