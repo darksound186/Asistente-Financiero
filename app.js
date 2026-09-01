@@ -119,16 +119,12 @@ function render(){
 
   const freq = state.payFrequency || 'quincenal';
   
-  // Actualizar el título principal de la cabecera con el saludo y nombre del usuario
   const userName = state.userName || '';
-  const headerSubtitle = document.querySelector('.header-subtitle') || document.querySelector('p.sub');
-  
   const titleEl = document.getElementById('mainTitle');
   if(titleEl) {
     titleEl.textContent = freq==='mensual' ? 'Mes en curso' : 'Quincena en curso';
   }
   
-  // Si tenemos un contenedor para el nombre o subtítulo de la cabecera
   let userHeaderEl = document.getElementById('userGreeting');
   if(!userHeaderEl && titleEl) {
     userHeaderEl = document.createElement('div');
@@ -145,17 +141,23 @@ function render(){
 
   app.innerHTML = `
     <div class="tabs">
-      <button class="tab ${currentTab==='dashboard'?'active':''}" data-tab="dashboard">${freq==='mensual'?'Mes':'Quincena'}</button>
-      <button class="tab ${currentTab==='extra'?'active':''}" data-tab="extra">Dinero libre</button>
-      <button class="tab ${currentTab==='loans'?'active':''}" data-tab="loans">🤝 Préstamos</button>
-      <button class="tab ${currentTab==='assistant'?'active':''}" data-tab="assistant">🤖 Asistente</button>
-      <button class="tab ${currentTab==='goals'?'active':''}" data-tab="goals">🎯 Metas</button>
-      <button class="tab ${currentTab==='settings'?'active':''}" data-tab="settings">⚙️ Ajustes</button>
+      <button type="button" class="tab ${currentTab==='dashboard'?'active':''}" data-tab="dashboard">${freq==='mensual'?'Mes':'Quincena'}</button>
+      <button type="button" class="tab ${currentTab==='extra'?'active':''}" data-tab="extra">Dinero libre</button>
+      <button type="button" class="tab ${currentTab==='loans'?'active':''}" data-tab="loans">🤝 Préstamos</button>
+      <button type="button" class="tab ${currentTab==='assistant'?'active':''}" data-tab="assistant">🤖 Asistente</button>
+      <button type="button" class="tab ${currentTab==='goals'?'active':''}" data-tab="goals">🎯 Metas</button>
+      <button type="button" class="tab ${currentTab==='settings'?'active':''}" data-tab="settings">⚙️ Ajustes</button>
     </div>
     <div id="tabContent"></div>
   `;
 
-  document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click', ()=>{ currentTab=t.getAttribute('data-tab'); render(); }));
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click', (e)=>{ 
+      e.preventDefault();
+      currentTab=t.getAttribute('data-tab'); 
+      render(); 
+    });
+  });
 
   const tc = document.getElementById('tabContent');
   if(currentTab==='dashboard'){ tc.innerHTML = renderDashboard(period); bindDashboard(); }
@@ -195,7 +197,7 @@ function renderSetup(prefill){
         <label>Gemini API Key (para el Asistente IA)</label>
         <input type="password" id="inApiKey" value="${apiKey}" placeholder="Pega tu API Key de Google AI Studio">
       </div>
-      <button class="btn" id="saveSetup">Guardar</button>
+      <button type="button" class="btn" id="saveSetup">Guardar</button>
       <div class="err" id="setupErr"></div>
     </div>
   `;
@@ -204,13 +206,15 @@ function renderSetup(prefill){
 function bindSetup(){
   let selectedFreq = document.querySelector('.freqBtn.active')?.getAttribute('data-freq') || 'quincenal';
   document.querySelectorAll('.freqBtn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
       selectedFreq = btn.getAttribute('data-freq');
       document.querySelectorAll('.freqBtn').forEach(b=>b.classList.toggle('active', b===btn));
     });
   });
 
-  document.getElementById('saveSetup')?.addEventListener('click', ()=>{
+  document.getElementById('saveSetup')?.addEventListener('click', (e)=>{
+    e.preventDefault();
     const userName = document.getElementById('inUserName').value.trim();
     const salary = Number(document.getElementById('inSalary').value);
     const cutoff = Number(document.getElementById('inCutoff').value);
@@ -267,14 +271,14 @@ function renderDashboard(period){
   const movesHtml = (cp.expenses && cp.expenses.length) ? cp.expenses.slice().reverse().map(e => `
     <li>
       <span>${e.note ? escapeHtml(e.note) : e.category}<span class="tag">${e.category}</span></span>
-      <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button class="del" data-id="${e.id}">✕</button></span>
+      <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button type="button" class="del" data-id="${e.id}">✕</button></span>
     </li>
   `).join('') : '<div class="empty">Sin movimientos todavía en este período.</div>';
 
   const incomesHtml = (cp.incomes && cp.incomes.length) ? cp.incomes.slice().reverse().map(i => `
     <li>
       <span>${i.note ? escapeHtml(i.note) : 'Ingreso Adicional'}</span>
-      <span style="display:flex;align-items:center;gap:8px;color:#2e7d32;"><b>+${fmt(i.amount)}</b><button class="del" data-inc-id="${i.id}">✕</button></span>
+      <span style="display:flex;align-items:center;gap:8px;color:#2e7d32;"><b>+${fmt(i.amount)}</b><button type="button" class="del" data-inc-id="${i.id}">✕</button></span>
     </li>
   `).join('') : '<div class="empty">No hay ingresos extra registrados.</div>';
 
@@ -300,7 +304,7 @@ function renderDashboard(period){
       <div class="expense-form">
         <input type="number" id="incAmount" placeholder="Monto extra">
         <input type="text" id="incNote" placeholder="Concepto (ej. Trabajo freelance, regalo...)">
-        <button id="addIncome">Agregar Ingreso</button>
+        <button type="button" id="addIncome">Agregar Ingreso</button>
       </div>
       <div class="err" id="incErr"></div>
       
@@ -333,7 +337,7 @@ function renderDashboard(period){
         <select id="expCategory">${catOptionsLibre}</select>
         <input type="number" id="expAmount" placeholder="Monto">
         <input type="text" id="expNote" placeholder="Nota (opcional)">
-        <button id="addExpense">Agregar</button>
+        <button type="button" id="addExpense">Agregar</button>
       </div>
       <div class="err" id="expErr"></div>
       <ul class="moves">${movesHtml}</ul>
@@ -352,7 +356,8 @@ function bindDashboard(){
     });
   }
 
-  document.getElementById('addIncome')?.addEventListener('click', ()=>{
+  document.getElementById('addIncome')?.addEventListener('click', (e)=>{
+    e.preventDefault();
     const amount = Number(document.getElementById('incAmount').value);
     const note = document.getElementById('incNote').value.trim();
     const errEl = document.getElementById('incErr');
@@ -371,7 +376,8 @@ function bindDashboard(){
   });
 
   document.querySelectorAll('.del[data-inc-id]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
       const id = btn.getAttribute('data-inc-id');
       const idx = (state.currentPeriod.incomes||[]).findIndex(i=>i.id===id);
       if(idx > -1){
@@ -382,7 +388,8 @@ function bindDashboard(){
     });
   });
 
-  document.getElementById('addExpense')?.addEventListener('click', ()=>{
+  document.getElementById('addExpense')?.addEventListener('click', (e)=>{
+    e.preventDefault();
     const bucket = bucketSel.value;
     const category = catSel.value;
     const amount = Number(document.getElementById('expAmount').value);
@@ -400,7 +407,8 @@ function bindDashboard(){
   });
 
   document.querySelectorAll('.del[data-id]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
       const id = btn.getAttribute('data-id');
       const idx = state.currentPeriod.expenses.findIndex(e=>e.id===id);
       if(idx>-1){
@@ -430,14 +438,15 @@ function renderExtra(period){
       <div class="expense-form">
         <input type="number" id="extraAmount" placeholder="Monto">
         <input type="text" id="extraNote" placeholder="¿En qué?">
-        <button id="addExtra">Agregar</button>
+        <button type="button" id="addExtra">Agregar</button>
       </div>
     </div>
   `;
 }
 
 function bindExtra(period){
-  document.getElementById('addExtra')?.addEventListener('click', ()=>{
+  document.getElementById('addExtra')?.addEventListener('click', (e)=>{
+    e.preventDefault();
     const amount = Number(document.getElementById('extraAmount').value);
     const note = document.getElementById('extraNote').value.trim();
     if(!amount || amount<=0) return;
@@ -460,10 +469,10 @@ function renderLoans(){
       <li>
         <span><b>${escapeHtml(l.person)}</b> - ${isPagado ? 'Monto:' : 'Pendiente:'} ${fmt(l.pending)}</span>
         <span style="display:flex;align-items:center;gap:8px;">
-          <button class="tag tag-toggle ${isPagado ? 'pagado' : 'pendiente'}" data-loan-toggle="${l.id}" title="Clic para cambiar estado">
+          <button type="button" class="tag tag-toggle ${isPagado ? 'pagado' : 'pendiente'}" data-loan-toggle="${l.id}" title="Clic para cambiar estado">
             ${l.status}
           </button>
-          <button class="del" data-loan-del="${l.id}">✕</button>
+          <button type="button" class="del" data-loan-del="${l.id}">✕</button>
         </span>
       </li>
     `;
@@ -476,14 +485,15 @@ function renderLoans(){
         <div class="field"><label>Persona</label><input type="text" id="loanPerson" placeholder="Nombre"></div>
         <div class="field"><label>Monto</label><input type="number" id="loanAmount" placeholder="Monto"></div>
       </div>
-      <button class="btn" id="addLoan">Registrar Préstamo</button>
+      <button type="button" class="btn" id="addLoan">Registrar Préstamo</button>
       <ul class="moves" style="margin-top:16px;">${loansHtml}</ul>
     </div>
   `;
 }
 
 function bindLoans(){
-  document.getElementById('addLoan')?.addEventListener('click', ()=>{
+  document.getElementById('addLoan')?.addEventListener('click', (e)=>{
+    e.preventDefault();
     const person = document.getElementById('loanPerson').value.trim();
     const amount = Number(document.getElementById('loanAmount').value);
     if(!person || !amount || amount<=0) return;
@@ -501,7 +511,8 @@ function bindLoans(){
   });
 
   document.querySelectorAll('[data-loan-toggle]').forEach(btn => {
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
       const id = btn.getAttribute('data-loan-toggle');
       const loan = state.loans.find(l => l.id === id);
       if(loan){
@@ -513,7 +524,8 @@ function bindLoans(){
   });
 
   document.querySelectorAll('[data-loan-del]').forEach(btn => {
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
       const id = btn.getAttribute('data-loan-del');
       state.loans = state.loans.filter(l => l.id !== id);
       saveState();
@@ -582,7 +594,7 @@ function renderAssistant(period){
       </div>
       <div class="chat-input">
         <input type="text" id="chatInput" placeholder="Ej: ¿Cuánto dinero me queda libre para salir?">
-        <button id="chatSendBtn">Enviar</button>
+        <button type="button" id="chatSendBtn">Enviar</button>
       </div>
     </div>
   `;
@@ -656,9 +668,9 @@ function bindAssistant(period){
     chatLog.scrollTop = chatLog.scrollHeight;
   }
 
-  sendBtn.addEventListener('click', handleSend);
+  sendBtn.addEventListener('click', (e)=>{ e.preventDefault(); handleSend(); });
   chatInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') handleSend();
+    if (e.key === 'Enter') { e.preventDefault(); handleSend(); }
   });
 }
 
@@ -671,7 +683,7 @@ function renderGoals(){
       <div class="panel" style="margin-bottom: 12px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
           <b style="font-size: 1.1rem;">🎯 ${escapeHtml(g.name)}</b>
-          <button class="del" data-goal-del="${g.id}">✕</button>
+          <button type="button" class="del" data-goal-del="${g.id}">✕</button>
         </div>
         <div style="font-size: 0.9rem; color: #666; margin-bottom: 6px;">
           Ahorrado: <b>${fmt(g.saved)}</b> de <b>${fmt(g.target)}</b> (${pct}%)
@@ -679,7 +691,7 @@ function renderGoals(){
         <div class="bar" style="margin-bottom: 12px;"><div class="bar-fill goal-fill" style="width:${pct}%; background: linear-gradient(90deg, #4caf50, #2e7d32);"></div></div>
         <div class="expense-form">
           <input type="number" id="addSaved_${g.id}" placeholder="Abonar monto">
-          <button data-goal-add="${g.id}">Abonar</button>
+          <button type="button" data-goal-add="${g.id}">Abonar</button>
         </div>
       </div>
     `;
@@ -691,7 +703,7 @@ function renderGoals(){
       <div class="expense-form">
         <input type="text" id="goalName" placeholder="Ej: Viaje, Moto, Fondo de emergencia">
         <input type="number" id="goalTarget" placeholder="Meta ($)">
-        <button id="addGoalBtn">Crear Meta</button>
+        <button type="button" id="addGoalBtn">Crear Meta</button>
       </div>
       <div class="err" id="goalErr"></div>
     </div>
@@ -701,7 +713,8 @@ function renderGoals(){
 }
 
 function bindGoals(){
-  document.getElementById('addGoalBtn')?.addEventListener('click', ()=>{
+  document.getElementById('addGoalBtn')?.addEventListener('click', (e)=>{
+    e.preventDefault();
     const name = document.getElementById('goalName').value.trim();
     const target = Number(document.getElementById('goalTarget').value);
     const errEl = document.getElementById('goalErr');
@@ -719,7 +732,8 @@ function bindGoals(){
   });
 
   document.querySelectorAll('[data-goal-add]').forEach(btn => {
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
       const id = btn.getAttribute('data-goal-add');
       const input = document.getElementById(`addSaved_${id}`);
       const amount = Number(input?.value);
@@ -735,7 +749,8 @@ function bindGoals(){
   });
 
   document.querySelectorAll('[data-goal-del]').forEach(btn => {
-    btn.addEventListener('click', ()=>{
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
       const id = btn.getAttribute('data-goal-del');
       state.goals = state.goals.filter(g => g.id !== id);
       saveState();
