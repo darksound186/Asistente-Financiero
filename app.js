@@ -1812,3 +1812,128 @@ function bindImport(){
   document.getElementById('app').classList.remove('hidden');
   render();
 })();
+
+function switchMobileTab(tabId) {
+  // Actualizar estado de los botones de la navegación inferior
+  const items = document.querySelectorAll('.mobile-nav-item');
+  items.forEach(item => item.classList.remove('active'));
+
+  const activeBtn = Array.from(items).find(item => 
+    item.getAttribute('onclick') && item.getAttribute('onclick').includes(`'${tabId}'`)
+  );
+  if (activeBtn) activeBtn.classList.add('active');
+
+  // Ocultar/Mostrar contenedores de vistas según la pestaña seleccionada
+  const views = ['inicio', 'finanzas', 'asistente', 'metas', 'prestado'];
+  views.forEach(view => {
+    const el = document.getElementById(`view-${view}`) || document.getElementById(view);
+    if (el) {
+      el.style.display = (view === tabId) ? 'block' : 'none';
+    }
+  });
+}
+
+function abrirModalGastoRapido() {
+  // Si ya existe una función o modal de registro de gasto en tu app, la reutiliza
+  if (typeof abrirModalGasto === 'function') {
+    abrirModalGasto();
+  } else {
+    const modal = document.getElementById('modal-gasto') || document.getElementById('modalGasto');
+    if (modal) modal.style.display = 'flex';
+  }
+}
+// ==========================================
+// FASE 5: Lógica del Módulo "Prestado"
+// ==========================================
+
+let prestamos = JSON.parse(localStorage.getItem('finanzas_prestamos')) || [];
+
+function abrirModalPrestamo() {
+  document.getElementById('modal-prestamo').style.display = 'flex';
+  document.getElementById('prestamo-fecha').value = new Date().toISOString().split('T')[0];
+}
+
+function cerrarModalPrestamo() {
+  document.getElementById('modal-prestamo').style.display = 'none';
+  document.getElementById('form-prestamo').reset();
+}
+
+function guardarPrestamo(e) {
+  e.preventDefault();
+  const nuevoPrestamo = {
+    id: Date.now(),
+    persona: document.getElementById('prestamo-persona').value.trim(),
+    monto: parseFloat(document.getElementById('prestamo-monto').value),
+    fecha: document.getElementById('prestamo-fecha').value,
+    notas: document.getElementById('prestamo-notas').value.trim(),
+    estado: 'pendiente',
+    fechaPago: null
+  };
+
+  prestamos.unshift(nuevoPrestamo);
+  guardarYRenderizarPrestamos();
+  cerrarModalPrestamo();
+}
+
+function marcarComoPagado(id) {
+  const p = prestamos.find(item => item.id === id);
+  if (p) {
+    p.estado = 'pagado';
+    p.fechaPago = new Date().toISOString().split('T')[0];
+    guardarYRenderizarPrestamos();
+  }
+}
+
+function guardarYRenderizarPrestamos() {
+  localStorage.setItem('finanzas_prestamos', JSON.stringify(prestamos));
+  renderizarPrestamos();
+}
+
+function renderizarPrestamos() {
+  const contenedor = document.getElementById('lista-prestamos');
+  if (!contenedor) return;
+
+  let totalPorCobrar = 0;
+  let totalCobrado = 0;
+
+  if (prestamos.length === 0) {
+    contenedor.innerHTML = `<p style="text-align: center; color: #64748b; margin-top: 20px;">No hay préstamos registrados</p>`;
+  } else {
+    contenedor.innerHTML = prestamos.map(p => {
+      if (p.estado === 'pendiente') totalPorCobrar += p.monto;
+      else totalCobrado += p.monto;
+
+      const esPendiente = p.estado === 'pendiente';
+      return `
+        <div class="prestamo-card ${p.estado}">
+          <div>
+            <strong style="font-size: 1rem; color: #f8fafc;">${p.persona}</strong>
+            <div style="font-size: 0.85rem; color: #38bdf8; font-weight: bold; margin-top: 2px;">
+              $${p.monto.toLocaleString()}
+            </div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
+              Prestado: ${p.fecha} ${p.notas ? '• ' + p.notas : ''}
+            </div>
+            ${p.fechaPago ? `<div style="font-size: 0.75rem; color: #4ade80;">Pagado el: ${p.fechaPago}</div>` : ''}
+            <span class="badge-estado ${esPendiente ? 'badge-pendiente' : 'badge-pagado'}">
+              ${esPendiente ? '🟡 Pendiente' : '🟢 Pagado'}
+            </span>
+          </div>
+          ${esPendiente ? `
+            <button onclick="marcarComoPagado(${p.id})" style="background: #22c55e; color: #fff; border: none; padding: 6px 10px; border-radius: 6px; font-size: 0.8rem; cursor: pointer;">
+              Marcar Pagado
+            </button>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('total-por-cobrar').textContent = `$${totalPorCobrar.toLocaleString()}`;
+  document.getElementById('total-cobrado').textContent = `$${totalCobrado.toLocaleString()}`;
+}
+
+// Inicializar la lista al cargar
+document.addEventListener('DOMContentLoaded', () => {
+  renderizarPrestamos();
+});

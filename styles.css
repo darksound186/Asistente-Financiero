@@ -181,3 +181,175 @@ table.prev input[type=checkbox]{width:auto;}
 
 .confirm-bar{background:var(--lavender-soft);border:1px solid rgba(155,127,224,0.3);border-radius:16px;padding:14px 16px;margin-bottom:14px;}
 .alert.ok{background:var(--mint-soft);color:#1F7A56;border:1px solid rgba(63,191,143,0.35);}
+
+/* Respetar zonas seguras de pantalla (Notch y barra gestual de iOS/Android) */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+body {
+  padding-top: var(--sat);
+  padding-bottom: calc(var(--sab) + 70px); /* Espacio extra para la navegación inferior móvil */
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none; /* Sensación de app nativa en interacciones táctiles */
+}
+
+/* Permitir selección de texto en campos de entrada y textos conversacionales */
+input, textarea, .chat-message, .selectable {
+  user-select: text;
+}
+
+/* Ajustes responsive para pantallas móviles (< 768px) */
+@media (max-width: 767px) {
+  /* Contenedores principales ocupan el ancho completo */
+  .container, .main-content, .dashboard-grid {
+    width: 100% !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    box-sizing: border-box;
+  }
+
+  /* Ajuste de tarjetas financieras para tarjetas apiladas en móvil */
+  .cards-grid, .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .card-full-width {
+    grid-column: span 2;
+  }
+
+  /* Optimización de tablas para desplazamiento horizontal en pantallas pequeñas */
+  .table-responsive {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ajuste de Modales para actuar como Bottom Sheets en móvil */
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    border-top-left-radius: 20px !important;
+    border-top-right-radius: 20px !important;
+    margin-bottom: 0 !important;
+  }
+
+  .modal {
+    align-items: flex-end !important;
+  }
+}
+
+/* Mantener comportamiento intacto para escritorio (>= 768px) */
+@media (min-width: 768px) {
+  body {
+    padding-bottom: 0 !important;
+  }
+}
+
+.mobile-nav {
+  display: none; /* Oculto en PC */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 65px;
+  background-color: #1e293b;
+  border-top: 1px solid #334155;
+  padding-bottom: var(--sab);
+  z-index: 1000;
+  justify-content: space-around;
+  align-items: center;
+}
+
+@media (max-width: 767px) {
+  .mobile-nav {
+    display: flex; /* Visible únicamente en pantallas pequeñas */
+  }
+}
+
+.mobile-nav-item {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  padding: 6px 0;
+  cursor: pointer;
+  flex: 1;
+  transition: color 0.2s ease-in-out;
+}
+
+.mobile-nav-item .nav-icon {
+  font-size: 1.25rem;
+  margin-bottom: 2px;
+}
+
+.mobile-nav-item.active {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.mobile-nav-item.nav-action-btn .nav-icon {
+  background-color: #2563eb;
+  color: #ffffff;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: -12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+.prestamo-card {
+  background-color: #1e293b;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-left: 4px solid #64748b;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.prestamo-card.pendiente {
+  border-left-color: #eab308;
+}
+
+.prestamo-card.pagado {
+  border-left-color: #22c55e;
+  opacity: 0.85;
+}
+
+.badge-estado {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-weight: bold;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.badge-pendiente {
+  background-color: rgba(234, 179, 8, 0.2);
+  color: #facc15;
+}
+
+.badge-pagado {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
