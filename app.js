@@ -1814,7 +1814,7 @@ function bindImport(){
 })();
 
 function switchMobileTab(tabId) {
-  // 1. Actualizar estado visual de los botones de la barra inferior
+  // 1. Actualizar estado activo en los botones de la barra inferior
   const items = document.querySelectorAll('.mobile-nav-item');
   items.forEach(item => item.classList.remove('active'));
 
@@ -1823,22 +1823,25 @@ function switchMobileTab(tabId) {
   );
   if (activeBtn) activeBtn.classList.add('active');
 
-  // 2. Mapeo de vistas según los IDs de index.html
-  const views = {
-    inicio: document.getElementById('view-inicio') || document.querySelector('.dashboard') || document.querySelector('main'),
-    finanzas: document.getElementById('view-finanzas') || document.getElementById('finanzas') || document.querySelector('.finanzas-container'),
-    asistente: document.getElementById('view-asistente') || document.getElementById('chat-container') || document.querySelector('.chat-section'),
-    metas: document.getElementById('view-metas') || document.getElementById('metas') || document.querySelector('.metas-container'),
-    prestado: document.getElementById('view-prestado')
-  };
+  // 2. Elementos principales
+  const wrapPrincipal = document.querySelector('.wrap');
+  const viewPrestado = document.getElementById('view-prestado');
 
-  // 3. Ocultar todas las secciones y mostrar solo la seleccionada
-  Object.keys(views).forEach(key => {
-    const el = views[key];
-    if (el) {
-      el.style.display = (key === tabId) ? 'block' : 'none';
+  // 3. Control de vistas
+  if (tabId === 'prestado') {
+    if (wrapPrincipal) wrapPrincipal.style.display = 'none';
+    if (viewPrestado) viewPrestado.style.display = 'block';
+  } else {
+    // Si presiona Inicio, Finanzas, Asistente, etc., muestra el contenido principal cargado por JS
+    if (wrapPrincipal) wrapPrincipal.style.display = 'block';
+    if (viewPrestado) viewPrestado.style.display = 'none';
+
+    // Si tu app renderiza secciones específicas dentro de #app, las busca por clase o ID
+    const targetSection = document.getElementById(`view-${tabId}`) || document.querySelector(`.${tabId}`);
+    if (targetSection) {
+      targetSection.scrollIntoView({ behavior: 'smooth' });
     }
-  });
+  }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
