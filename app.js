@@ -511,20 +511,20 @@ function bindAssistant(period){
       const systemContext = buildFinancialContext(period);
 
       // Endpoint v1 con el modelo actual gemini-2.5-flash
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: `${systemContext}\n\nPregunta del usuario: ${userText}` }
-              ]
-            }
-          ]
-        })
-      });
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: `${systemContext}\n\nPregunta del usuario: ${userText}` }
+        ]
+      }
+    ]
+  })
+});
 
       const data = await response.json();
       const loadingEl = document.getElementById(loadingId);
