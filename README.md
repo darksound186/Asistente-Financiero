@@ -2,7 +2,7 @@
 
 Asistente y control financiero personal transformado en una **Progressive Web App (PWA)** instalable en dispositivos móviles (Android / iOS) y accesible desde PC.
 
----
+---https://darksound186.github.io/Asistente-Financiero/
 
 ## 🚀 Características Principales
 
