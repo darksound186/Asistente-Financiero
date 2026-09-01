@@ -166,6 +166,10 @@ h1 {
 .bucket-label { font-family:'Nunito Sans',sans-serif; font-weight:800; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin-bottom:6px; }
 .bucket-amt { font-family:'Baloo 2',sans-serif; font-weight:700; font-size:23px; margin-bottom:10px; color:var(--text); }
 .bar { height:10px; border-radius:999px; background:var(--surface-2); overflow:hidden; margin-bottom:8px; }
+/* Color verde exclusivo para las barras dentro del panel de metas */
+.panel .bar-fill {
+  background: linear-gradient(90deg, #4caf50, #2e7d32);
+}
 .bar-fill { height:100%; border-radius:999px; }
 .bucket.fijos .bar-fill { background:linear-gradient(90deg, var(--sky), #7CB0EE); }
 .bucket.fijos .bucket-label { color:var(--sky); }

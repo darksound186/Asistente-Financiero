@@ -238,6 +238,13 @@ function renderDashboard(period){
     </li>
   `).join('') : '<div class="empty">Sin movimientos todavía en este período.</div>';
 
+  const incomesHtml = (cp.incomes && cp.incomes.length) ? cp.incomes.slice().reverse().map(i => `
+    <li>
+      <span>${i.note ? escapeHtml(i.note) : 'Ingreso Adicional'}</span>
+      <span style="display:flex;align-items:center;gap:8px;color:#2e7d32;"><b>+${fmt(i.amount)}</b><button class="del" data-inc-id="${i.id}">✕</button></span>
+    </li>
+  `).join('') : '<div class="empty">No hay ingresos extra registrados.</div>';
+
   return `
     <div class="hero">
       <div class="hero-top">
@@ -263,6 +270,9 @@ function renderDashboard(period){
         <button id="addIncome">Agregar Ingreso</button>
       </div>
       <div class="err" id="incErr"></div>
+      
+      <h3 style="margin-top:16px; font-size: 0.95rem; color:#555;">Ingresos registrados en este período:</h3>
+      <ul class="moves" style="margin-top:8px;">${incomesHtml}</ul>
     </div>
 
     <div class="buckets">
@@ -325,6 +335,18 @@ function bindDashboard(){
 
     saveState();
     render();
+  });
+
+  document.querySelectorAll('.del[data-inc-id]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.getAttribute('data-inc-id');
+      const idx = (state.currentPeriod.incomes||[]).findIndex(i=>i.id===id);
+      if(idx > -1){
+        state.currentPeriod.incomes.splice(idx,1);
+        saveState();
+        render();
+      }
+    });
   });
 
   document.getElementById('addExpense')?.addEventListener('click', ()=>{
@@ -402,7 +424,10 @@ function renderLoans(){
   const loansHtml = (state.loans && state.loans.length) ? state.loans.map(l => `
     <li>
       <span><b>${escapeHtml(l.person)}</b> - Pendiente: ${fmt(l.pending)}</span>
-      <span class="tag">${l.status}</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <span class="tag">${l.status}</span>
+        <button class="del" data-loan-del="${l.id}">✕</button>
+      </span>
     </li>
   `).join('') : '<div class="empty">No tienes préstamos registrados.</div>';
 
@@ -428,6 +453,15 @@ function bindLoans(){
     state.loans.push({id: Date.now().toString(36), person, original:amount, returned:0, pending:amount, status:'Pendiente'});
     saveState();
     render();
+  });
+
+  document.querySelectorAll('[data-loan-del]').forEach(btn => {
+    btn.addEventListener('click', ()=>{
+      const id = btn.getAttribute('data-loan-del');
+      state.loans = state.loans.filter(l => l.id !== id);
+      saveState();
+      render();
+    });
   });
 }
 
@@ -524,7 +558,6 @@ function bindAssistant(period){
     try {
       const systemContext = buildFinancialContext(period);
 
-      // Usando gemini-3.5-flash como el modelo principal
       let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -584,7 +617,7 @@ function renderGoals(){
         <div style="font-size: 0.9rem; color: #666; margin-bottom: 6px;">
           Ahorrado: <b>${fmt(g.saved)}</b> de <b>${fmt(g.target)}</b> (${pct}%)
         </div>
-        <div class="bar" style="margin-bottom: 12px;"><div class="bar-fill" style="width:${pct}%"></div></div>
+        <div class="bar" style="margin-bottom: 12px;"><div class="bar-fill goal-fill" style="width:${pct}%; background: linear-gradient(90deg, #4caf50, #2e7d32);"></div></div>
         <div class="expense-form">
           <input type="number" id="addSaved_${g.id}" placeholder="Abonar monto">
           <button data-goal-add="${g.id}">Abonar</button>
