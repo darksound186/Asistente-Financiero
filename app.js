@@ -11,14 +11,14 @@ function getGeminiKey() {
   return localStorage.getItem('gemini_api_key') || '';
 }
 
-async function loadState(){
+function loadState(){
   try{
     const raw = localStorage.getItem(STORE_KEY);
     if(raw) state = JSON.parse(raw);
   }catch(e){ state = null; }
 }
 
-async function saveState(){
+function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
   catch(e){ console.error('No se pudo guardar', e); }
 }
@@ -56,10 +56,11 @@ function extraPoolTotal(period, cp){
 }
 
 function normalizePeriod(cp){
-  if(!cp.spent) cp.spent = {fijos:0,libre:0};
+  if(!cp.spent) cp.spent = {fijos:0,libre:0,extra:0};
   if(typeof cp.spent.extra !== 'number') cp.spent.extra = 0;
   if(!cp.extraExpenses) cp.extraExpenses = [];
   if(!cp.incomes) cp.incomes = [];
+  if(!cp.expenses) cp.expenses = [];
 }
 
 function getAllocations(){
@@ -113,8 +114,9 @@ function abrirModalGastoRapido() {
 function render(){
   const app = document.getElementById('app');
   const loading = document.getElementById('loading');
-  if(loading) loading.classList.add('hidden');
-  if(app) app.classList.remove('hidden');
+  
+  if(loading) loading.style.display = 'none';
+  if(app) app.style.display = 'block';
 
   if(!state){ if(app) app.innerHTML = renderSetup(null); bindSetup(); return; }
   if(!state.loans) state.loans = [];
@@ -243,7 +245,7 @@ function renderDashboard(period){
 
   const catOptionsLibre = CATS.libre.map(c=>`<option value="${c}">${c}</option>`).join('');
 
-  const movesHtml = cp.expenses.length ? cp.expenses.slice().reverse().map(e => `
+  const movesHtml = (cp.expenses && cp.expenses.length) ? cp.expenses.slice().reverse().map(e => `
     <li>
       <span>${e.note ? e.note : e.category}<span class="tag">${e.category}</span></span>
       <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button class="del" data-id="${e.id}">✕</button></span>
@@ -311,7 +313,7 @@ function bindDashboard(){
     });
   }
 
-  document.getElementById('addExpense')?.addEventListener('click', async ()=>{
+  document.getElementById('addExpense')?.addEventListener('click', ()=>{
     const bucket = bucketSel.value;
     const category = catSel.value;
     const amount = Number(document.getElementById('expAmount').value);
@@ -324,18 +326,18 @@ function bindDashboard(){
     state.currentPeriod.expenses.push({id, bucket, amount, note, category});
     state.currentPeriod.spent[bucket] += amount;
 
-    await saveState();
+    saveState();
     render();
   });
 
   document.querySelectorAll('.del[data-id]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
+    btn.addEventListener('click', ()=>{
       const id = btn.getAttribute('data-id');
       const idx = state.currentPeriod.expenses.findIndex(e=>e.id===id);
       if(idx>-1){
         state.currentPeriod.spent[state.currentPeriod.expenses[idx].bucket] -= state.currentPeriod.expenses[idx].amount;
         state.currentPeriod.expenses.splice(idx,1);
-        await saveState(); 
+        saveState(); 
         render();
       }
     });
@@ -366,7 +368,7 @@ function renderExtra(period){
 }
 
 function bindExtra(period){
-  document.getElementById('addExtra')?.addEventListener('click', async ()=>{
+  document.getElementById('addExtra')?.addEventListener('click', ()=>{
     const amount = Number(document.getElementById('extraAmount').value);
     const note = document.getElementById('extraNote').value.trim();
     if(!amount || amount<=0) return;
@@ -377,7 +379,7 @@ function bindExtra(period){
     cp.extraExpenses.push({id, amount, note});
     cp.spent.extra += amount;
 
-    await saveState();
+    saveState();
     render();
   });
 }
@@ -404,13 +406,13 @@ function renderLoans(){
 }
 
 function bindLoans(){
-  document.getElementById('addLoan')?.addEventListener('click', async ()=>{
+  document.getElementById('addLoan')?.addEventListener('click', ()=>{
     const person = document.getElementById('loanPerson').value.trim();
     const amount = Number(document.getElementById('loanAmount').value);
     if(!person || !amount || amount<=0) return;
 
     state.loans.push({id: Date.now().toString(36), person, original:amount, returned:0, pending:amount, status:'Pendiente'});
-    await saveState();
+    saveState();
     render();
   });
 }
@@ -460,8 +462,6 @@ OTRO DETALLE:
 - Préstamos pendientes por cobrar: ${prestamosActivos}
 - Últimos gastos registrados:
 ${ultimosGastos}
-
-Analiza este contexto financiero completo para responder a las preguntas del usuario y darle buenas sugerencias.
 `;
 }
 
@@ -561,7 +561,14 @@ function renderGoals(){
 
 function bindGoals(){}
 
-window.addEventListener('DOMContentLoaded', async () => {
-  await loadState();
+// Inicialización sincrónica inmediata
+function initApp() {
+  loadState();
   render();
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
