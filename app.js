@@ -356,6 +356,97 @@ function bindDashboard(){
     });
   }
 
+  // Helper para registrar eventos de click y touch sin duplicar
+  function addTouchListener(elementId, handler) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    
+    let handled = false;
+    const execute = (e) => {
+      e.preventDefault();
+      if (handled) return;
+      handled = true;
+      setTimeout(() => { handled = false; }, 300);
+      handler(e);
+    };
+
+    el.addEventListener('touchend', execute, { passive: false });
+    el.addEventListener('click', execute);
+  }
+
+  // Evento agregar ingreso
+  addTouchListener('addIncome', () => {
+    const amount = Number(document.getElementById('incAmount').value);
+    const note = document.getElementById('incNote').value.trim();
+    const errEl = document.getElementById('incErr');
+
+    if(!amount || amount <= 0){
+      if(errEl) errEl.textContent = 'Ingresa un monto válido.';
+      return;
+    }
+
+    if(!state.currentPeriod.incomes) state.currentPeriod.incomes = [];
+    const id = Date.now().toString(36);
+    state.currentPeriod.incomes.push({ id, amount, note });
+
+    saveState();
+    render();
+  });
+
+  // Evento agregar gasto
+  addTouchListener('addExpense', () => {
+    const bucket = bucketSel.value;
+    const category = catSel.value;
+    const amount = Number(document.getElementById('expAmount').value);
+    const note = document.getElementById('expNote').value.trim();
+    const errEl = document.getElementById('expErr');
+
+    if(!amount || amount<=0){ if(errEl) errEl.textContent='Ingresa un monto válido.'; return; }
+
+    const id = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    state.currentPeriod.expenses.push({id, bucket, amount, note, category});
+    state.currentPeriod.spent[bucket] += amount;
+
+    saveState();
+    render();
+  });
+
+  // Delegación de eventos para borrar items en móvil
+  const appEl = document.getElementById('app');
+  if(appEl) {
+    const handleDelete = (e) => {
+      const btnInc = e.target.closest('.del[data-inc-id]');
+      if (btnInc) {
+        e.preventDefault();
+        const id = btnInc.getAttribute('data-inc-id');
+        const idx = (state.currentPeriod.incomes||[]).findIndex(i=>i.id===id);
+        if(idx > -1){
+          state.currentPeriod.incomes.splice(idx,1);
+          saveState();
+          render();
+        }
+        return;
+      }
+
+      const btnExp = e.target.closest('.del[data-id]');
+      if (btnExp) {
+        e.preventDefault();
+        const id = btnExp.getAttribute('data-id');
+        const idx = state.currentPeriod.expenses.findIndex(e=>e.id===id);
+        if(idx>-1){
+          state.currentPeriod.spent[state.currentPeriod.expenses[idx].bucket] -= state.currentPeriod.expenses[idx].amount;
+          state.currentPeriod.expenses.splice(idx,1);
+          saveState(); 
+          render();
+        }
+      }
+    };
+
+    appEl.addEventListener('touchend', handleDelete, { passive: false });
+    appEl.addEventListener('click', handleDelete);
+  }
+}
+
   document.getElementById('addIncome')?.addEventListener('click', (e)=>{
     e.preventDefault();
     const amount = Number(document.getElementById('incAmount').value);
