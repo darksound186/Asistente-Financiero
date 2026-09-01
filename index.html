@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <!-- Metadatos PWA e iOS -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -18,7 +17,7 @@
 </head>
 <body>
 
-  <!-- Vista Principal (Inicio / Finanzas) -->
+  <!-- Vista Principal -->
   <div class="wrap" id="view-inicio">
     <div class="eyebrow">Control financiero</div>
     <h1 id="mainTitle">Quincena en curso</h1>
@@ -27,87 +26,27 @@
     <div id="app" class="hidden"></div>
   </div>
 
-  <!-- Vista de Préstamos -->
-  <section id="view-prestado" class="pwa-view" style="display: none; padding: 15px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-      <h2>🤝 Préstamos</h2>
-      <button onclick="abrirModalPrestamo()" style="background: #2563eb; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-weight: bold; cursor: pointer;">
-        + Nuevo Préstamo
-      </button>
-    </div>
-
-    <!-- Resumen de Préstamos -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
-      <div style="background: #1e293b; padding: 12px; border-radius: 10px; border-left: 4px solid #eab308;">
-        <span style="font-size: 0.8rem; color: #94a3b8;">Por Cobrar</span>
-        <h3 id="total-por-cobrar" style="margin: 5px 0 0; color: #facc15;">$0</h3>
-      </div>
-      <div style="background: #1e293b; padding: 12px; border-radius: 10px; border-left: 4px solid #22c55e;">
-        <span style="font-size: 0.8rem; color: #94a3b8;">Cobrado</span>
-        <h3 id="total-cobrado" style="margin: 5px 0 0; color: #4ade80;">$0</h3>
-      </div>
-    </div>
-
-    <!-- Lista de Préstamos -->
-    <div id="lista-prestamos" style="display: flex; flex-direction: column; gap: 10px;">
-      <!-- Render dinámico desde JS -->
-    </div>
-  </section>
-
-  <!-- Modal Nuevo Préstamo -->
-  <div id="modal-prestamo" class="modal" style="display: none;">
-    <div class="modal-content" style="background: #1e293b; color: #fff; padding: 20px; border-radius: 12px;">
-      <h3 style="margin-top: 0;">Registrar Préstamo</h3>
-      <form id="form-prestamo" onsubmit="guardarPrestamo(event)">
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Persona</label>
-          <input type="text" id="prestamo-persona" required placeholder="Ej: Juan" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
-        </div>
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Monto ($)</label>
-          <input type="number" id="prestamo-monto" required placeholder="20000" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
-        </div>
-        <div style="margin-bottom: 12px;">
-          <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Fecha de Préstamo</label>
-          <input type="date" id="prestamo-fecha" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
-        </div>
-        <div style="margin-bottom: 15px;">
-          <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Descripción / Notas</label>
-          <input type="text" id="prestamo-notas" placeholder="Ej: Para el almuerzo" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #fff;">
-        </div>
-        <div style="display: flex; gap: 10px; justify-content: flex-end;">
-          <button type="button" onclick="cerrarModalPrestamo()" style="background: #475569; color: #fff; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer;">Cancelar</button>
-          <button type="submit" style="background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">Guardar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- Navegación Inferior para Móviles -->
   <nav class="mobile-nav" id="mobileNav">
-    <button class="mobile-nav-item active" onclick="switchMobileTab('inicio')">
+    <button class="mobile-nav-item active" onclick="switchMobileTab('dashboard')">
       <span class="nav-icon">🏠</span>
       <span class="nav-label">Inicio</span>
     </button>
-    <button class="mobile-nav-item" onclick="switchMobileTab('finanzas')">
+    <button class="mobile-nav-item" onclick="switchMobileTab('extra')">
       <span class="nav-icon">💰</span>
-      <span class="nav-label">Finanzas</span>
+      <span class="nav-label">Sin Asignar</span>
     </button>
     <button class="mobile-nav-item nav-action-btn" onclick="abrirModalGastoRapido()">
       <span class="nav-icon">➕</span>
       <span class="nav-label">Registrar</span>
     </button>
-    <button class="mobile-nav-item" onclick="switchMobileTab('asistente')">
+    <button class="mobile-nav-item" onclick="switchMobileTab('assistant')">
       <span class="nav-icon">🤖</span>
       <span class="nav-label">Asistente</span>
     </button>
-    <button class="mobile-nav-item" onclick="switchMobileTab('metas')">
-      <span class="nav-icon">🎯</span>
-      <span class="nav-label">Metas</span>
-    </button>
-    <button class="mobile-nav-item" onclick="switchMobileTab('prestado')">
+    <button class="mobile-nav-item" onclick="switchMobileTab('loans')">
       <span class="nav-icon">🤝</span>
-      <span class="nav-label">Prestado</span>
+      <span class="nav-label">Préstamos</span>
     </button>
   </nav>
 

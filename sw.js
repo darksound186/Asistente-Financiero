@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finanzas-v1';
+const CACHE_NAME = 'finanzas-v2';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -33,22 +33,19 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   
-  // Para APIs o peticiones HTTP no-GET, usar red directa
-  if (req.method !== 'GET' || req.url.includes('google') || req.url.includes('api')) {
-    event.respondWith(fetch(req));
+  if (req.method !== 'GET' || !req.url.startsWith('http')) {
     return;
   }
 
-  // Network First con respaldo en Caché para assets estáticos
   event.respondWith(
     fetch(req)
       .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
           const responseClone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(req, responseClone));
         }
         return networkResponse;
       })
-      .catch(() => caches.match(req))
+      .catch(() => caches.match(req).then((response) => response || caches.match('./index.html')))
   );
 });
