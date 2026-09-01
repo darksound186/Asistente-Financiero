@@ -48,13 +48,11 @@ function computePeriod(today, cutoff, frequency){
   return {key,label,startDay,endDay,totalDays:endDay-startDay+1,elapsed:d-startDay+1,remaining:endDay-d,month:m,year:y};
 }
 
-// Calcula el total de Dinero Libre descontando obligaciones, gastos fijos y préstamos pendientes
 function extraPoolTotal(period, cp){
   const alloc = getAllocations();
   const ingresoExtra = (cp.incomes||[]).reduce((s,i)=>s+i.amount,0);
   const ingresoTotal = state.salary + ingresoExtra;
   
-  // Suma de préstamos pendientes por cobrar
   const prestamosPendientes = (state.loans || [])
     .filter(l => l.status === 'Pendiente')
     .reduce((s, l) => s + (l.pending || 0), 0);
@@ -120,8 +118,30 @@ function render(){
   saveState();
 
   const freq = state.payFrequency || 'quincenal';
+  
+  // Actualizar el título principal de la cabecera con el saludo y nombre del usuario
+  const userName = state.userName || '';
+  const headerSubtitle = document.querySelector('.header-subtitle') || document.querySelector('p.sub');
+  
   const titleEl = document.getElementById('mainTitle');
-  if(titleEl) titleEl.textContent = freq==='mensual' ? 'Mes en curso' : 'Quincena en curso';
+  if(titleEl) {
+    titleEl.textContent = freq==='mensual' ? 'Mes en curso' : 'Quincena en curso';
+  }
+  
+  // Si tenemos un contenedor para el nombre o subtítulo de la cabecera
+  let userHeaderEl = document.getElementById('userGreeting');
+  if(!userHeaderEl && titleEl) {
+    userHeaderEl = document.createElement('div');
+    userHeaderEl.id = 'userGreeting';
+    userHeaderEl.style.fontSize = '1.3rem';
+    userHeaderEl.style.fontWeight = 'bold';
+    userHeaderEl.style.color = '#7c4dff';
+    userHeaderEl.style.marginBottom = '4px';
+    titleEl.parentNode.insertBefore(userHeaderEl, titleEl);
+  }
+  if(userHeaderEl) {
+    userHeaderEl.textContent = userName ? `¡Hola, ${userName}! 👋` : '';
+  }
 
   app.innerHTML = `
     <div class="tabs">
@@ -143,17 +163,21 @@ function render(){
   else if(currentTab==='loans'){ tc.innerHTML = renderLoans(); bindLoans(); }
   else if(currentTab==='assistant'){ tc.innerHTML = renderAssistant(period); bindAssistant(period); }
   else if(currentTab==='goals'){ tc.innerHTML = renderGoals(); bindGoals(); }
-  else if(currentTab==='settings'){ tc.innerHTML = renderSetup({salary:state.salary, payDay:state.payDay, fijosMensual:state.fijosMensual, variablesMensual:state.variablesMensual, payFrequency:state.payFrequency||'quincenal'}); bindSetup(); }
+  else if(currentTab==='settings'){ tc.innerHTML = renderSetup({userName:state.userName, salary:state.salary, payDay:state.payDay, fijosMensual:state.fijosMensual, variablesMensual:state.variablesMensual, payFrequency:state.payFrequency||'quincenal'}); bindSetup(); }
 }
 
 function renderSetup(prefill){
-  const s = prefill || {salary:950000, payDay:15, fijosMensual:710000, variablesMensual:300000, payFrequency:'quincenal'};
+  const s = prefill || {userName:'', salary:950000, payDay:15, fijosMensual:710000, variablesMensual:300000, payFrequency:'quincenal'};
   const freq = s.payFrequency || 'quincenal';
   const apiKey = getGeminiKey();
 
   return `
     <div class="panel" id="setupPanel">
       <h2>${state ? 'Ajustar tu sistema' : 'Arma tu sistema financiero'}</h2>
+      <div class="field">
+        <label>¿Cómo te llamas?</label>
+        <input type="text" id="inUserName" value="${escapeHtml(s.userName||'')}" placeholder="Ej: Darikson">
+      </div>
       <div class="field">
         <label>¿Cómo te pagan?</label>
         <div class="freq-toggle" id="freqToggle">
@@ -187,6 +211,7 @@ function bindSetup(){
   });
 
   document.getElementById('saveSetup')?.addEventListener('click', ()=>{
+    const userName = document.getElementById('inUserName').value.trim();
     const salary = Number(document.getElementById('inSalary').value);
     const cutoff = Number(document.getElementById('inCutoff').value);
     const fijosMensual = Number(document.getElementById('inFijos').value);
@@ -202,6 +227,7 @@ function bindSetup(){
 
     const wasSetUp = !!state;
     state = state || {history:[], currentPeriod:null, goals:[], loans:[]};
+    state.userName = userName;
     state.payFrequency = selectedFreq;
     state.salary = salary; 
     state.payDay = cutoff;
@@ -474,7 +500,6 @@ function bindLoans(){
     render();
   });
 
-  // Alternar entre Pendiente y Pagado
   document.querySelectorAll('[data-loan-toggle]').forEach(btn => {
     btn.addEventListener('click', ()=>{
       const id = btn.getAttribute('data-loan-toggle');
@@ -487,7 +512,6 @@ function bindLoans(){
     });
   });
 
-  // Eliminar préstamo
   document.querySelectorAll('[data-loan-del]').forEach(btn => {
     btn.addEventListener('click', ()=>{
       const id = btn.getAttribute('data-loan-del');
@@ -520,11 +544,13 @@ function buildFinancialContext(period) {
     .map(e => `- ${e.category} (${e.bucket}): ${fmt(e.amount)} ${e.note ? '('+e.note+')' : ''}`)
     .join('\n') || 'Sin gastos recientes';
 
+  const userName = state.userName || 'Usuario';
+
   return `
 Eres el asistente financiero personal en la app "Control Quincenal".
-Responde de forma concisa, empática, clara y muy práctica. Utiliza pesos colombianos (COP).
+El nombre del usuario es ${userName}. Dirígete a él/ella por su nombre de forma natural, empática, clara y muy práctica. Utiliza pesos colombianos (COP).
 
-ESTADO FINANCIERO ACTUAL DEL USUARIO (${period.label}):
+ESTADO FINANCIERO ACTUAL DE ${userName.toUpperCase()} (${period.label}):
 - Frecuencia de pago: ${state.payFrequency || 'quincenal'}
 - Sueldo base del período: ${fmt(state.salary)}
 - Ingresos adicionales este período: ${fmt(ingresoExtra)}
