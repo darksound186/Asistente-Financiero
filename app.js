@@ -500,17 +500,17 @@ function bindAssistant(period){
     chatLog.innerHTML += `<div class="bubble bot" id="${loadingId}">Pensando y calculando...</div>`;
     chatLog.scrollTop = chatLog.scrollHeight;
 
-    const apiKey = getGeminiKey();
+    const apiKey = getGeminiKey().trim();
     if (!apiKey) {
       const loadingEl = document.getElementById(loadingId);
-      if (loadingEl) loadingEl.textContent = 'Por favor configura tu Gemini API Key en la pestaña Ajustes (⚙️).';
+      if (loadingEl) loadingEl.textContent = 'Por favor configura tu Gemini API Key en Ajustes (⚙️).';
       return;
     }
 
     try {
       const systemContext = buildFinancialContext(period);
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -518,8 +518,7 @@ function bindAssistant(period){
             {
               role: 'user',
               parts: [
-                { text: systemContext },
-                { text: `Pregunta del usuario: ${userText}` }
+                { text: `${systemContext}\n\nPregunta del usuario: ${userText}` }
               ]
             }
           ]
@@ -527,9 +526,18 @@ function bindAssistant(period){
       });
 
       const data = await response.json();
-      const botReply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude obtener una respuesta en este momento. Intenta de nuevo.';
-
       const loadingEl = document.getElementById(loadingId);
+
+      if (!response.ok) {
+        console.error('Error API Gemini:', data);
+        if (loadingEl) {
+          loadingEl.textContent = `Error API (${response.status}): ${data.error?.message || 'Revisa tu API Key en Ajustes'}`;
+        }
+        return;
+      }
+
+      const botReply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No pude interpretar la respuesta del modelo.';
+
       if (loadingEl) {
         loadingEl.textContent = botReply;
       }
@@ -537,7 +545,7 @@ function bindAssistant(period){
       console.error(err);
       const loadingEl = document.getElementById(loadingId);
       if (loadingEl) {
-        loadingEl.textContent = 'Hubo un problema conectando con Gemini. Revisa tu API Key en la pestaña Ajustes.';
+        loadingEl.textContent = 'Hubo un problema de conexión al llamar a la API.';
       }
     }
     chatLog.scrollTop = chatLog.scrollHeight;
