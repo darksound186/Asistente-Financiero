@@ -468,6 +468,13 @@ function renderExtra(period){
   const spent = cp.spent.extra;
   const remaining = total - spent;
 
+  const extraMovesHtml = (cp.extraExpenses && cp.extraExpenses.length) ? cp.extraExpenses.slice().reverse().map(e => `
+    <li>
+      <span>${e.note ? escapeHtml(e.note) : 'Desembolso libre'}</span>
+      <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button type="button" class="del" data-extra-id="${e.id}">✕</button></span>
+    </li>
+  `).join('') : '<div class="empty">Sin desembolsos libres registrados en este período.</div>';
+
   return `
     <div class="sinasignar">
       <div class="lbl">Dinero libre disponible</div>
@@ -480,6 +487,9 @@ function renderExtra(period){
         <input type="text" id="extraNote" placeholder="¿En qué?">
         <button type="submit">Agregar</button>
       </form>
+      
+      <h3 style="margin-top:20px; font-size: 0.95rem; color:#555;">Historial de desembolsos libres:</h3>
+      <ul class="moves" style="margin-top:8px;">${extraMovesHtml}</ul>
     </div>
   `;
 }
@@ -501,6 +511,24 @@ function bindExtra(period){
 
       saveState();
       render();
+    });
+  }
+
+  const tc = document.getElementById('tabContent');
+  if(tc) {
+    tc.addEventListener('click', (e) => {
+      const btnDel = e.target.closest('.del[data-extra-id]');
+      if (btnDel) {
+        const id = btnDel.getAttribute('data-extra-id');
+        const cp = state.currentPeriod;
+        const idx = (cp.extraExpenses || []).findIndex(ex => ex.id === id);
+        if(idx > -1){
+          cp.spent.extra -= cp.extraExpenses[idx].amount;
+          cp.extraExpenses.splice(idx, 1);
+          saveState();
+          render();
+        }
+      }
     });
   }
 }
