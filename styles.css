@@ -106,8 +106,8 @@ h1 {
 
 .hero-top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
 .hero-label { font-family:'Nunito Sans',sans-serif; font-weight:800; font-size:12px; color:var(--sky); text-transform:uppercase; letter-spacing:0.08em; }
-.days-num { font-family:'Baloo 2',sans-serif; font-weight:700; font-size:56px; line-height:1; color:var(--lavender); margin:4px 0 0; }
-.days-num span { font-size:15px; font-weight:700; color:var(--muted); font-family:'Nunito Sans',sans-serif; margin-left:8px; text-transform:none; letter-spacing:0; }
+.days-num { font-family:'Baloo 2',sans-serif; font-weight:700; font-size:42px; line-height:1; color:var(--lavender); margin:4px 0 0; }
+.days-num span { font-size:14px; font-weight:700; color:var(--muted); font-family:'Nunito Sans',sans-serif; display:block; margin-top:4px; text-transform:none; letter-spacing:0; }
 
 .timeline { display:flex; gap:4px; margin-top:20px; align-items:center; }
 .tick { flex:1; height:16px; border-radius:999px; background:#FFFFFF; border:1px solid var(--border); }
@@ -225,11 +225,11 @@ h1 {
 .quick button { background:var(--sky-soft); border:1px solid rgba(79,143,224,0.25); color:var(--sky); border-radius:999px; padding:8px 14px; font-size:12px; font-weight:700; cursor:pointer; }
 .quick button:hover { background:var(--sky); color:#fff; }
 
-.freq-toggle { display:flex; gap:8px; }
+.freq-toggle { display:flex; gap:6px; }
 .freqBtn {
   flex:1; background:var(--surface-2); border:1.5px solid var(--border); color:var(--muted);
-  border-radius:999px; padding:11px 14px; font-size:14px; font-weight:800; font-family:'Nunito Sans',sans-serif; cursor:pointer;
-  transition:background .15s,color .15s,border-color .15s;
+  border-radius:999px; padding:10px 8px; font-size:12px; font-weight:800; font-family:'Nunito Sans',sans-serif; cursor:pointer;
+  transition:background .15s,color .15s,border-color .15s; text-align:center;
 }
 .freqBtn.active { background:var(--lavender); border-color:var(--lavender); color:#fff; }
 
@@ -309,7 +309,6 @@ h1 {
   color: #2e7d32;
 }
 
-/* Ajustes para toque táctil en móviles */
 button, input, select {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;

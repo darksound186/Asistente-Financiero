@@ -31,10 +31,10 @@ function computePeriod(today, cutoff, frequency){
   const lastDay = daysInMonth(y,m);
   const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
-  if(frequency === 'mensual'){
+  if(frequency === 'mensual' || frequency === 'independiente'){
     const startDay = 1, endDay = lastDay;
-    const key = `${y}-${String(m+1).padStart(2,'0')}-M`;
-    const label = `${monthNames[m]} completo`;
+    const key = `${y}-${String(m+1).padStart(2,'0')}-${frequency === 'independiente' ? 'IND' : 'M'}`;
+    const label = frequency === 'independiente' ? `Independiente - ${monthNames[m]} ${y}` : `${monthNames[m]} completo`;
     const payDay = Math.min(cutoff||lastDay, lastDay);
     const remaining = (payDay >= d) ? (payDay - d) : (lastDay - d);
     return {key,label,startDay,endDay,totalDays:endDay-startDay+1,elapsed:d-startDay+1,remaining,month:m,year:y};
@@ -51,7 +51,8 @@ function computePeriod(today, cutoff, frequency){
 function extraPoolTotal(period, cp){
   const alloc = getAllocations();
   const ingresoExtra = (cp.incomes||[]).reduce((s,i)=>s+i.amount,0);
-  const ingresoTotal = state.salary + ingresoExtra;
+  const baseSalary = state.payFrequency === 'independiente' ? 0 : state.salary;
+  const ingresoTotal = baseSalary + ingresoExtra;
   
   const prestamosPendientes = (state.loans || [])
     .filter(l => l.status === 'Pendiente')
@@ -69,7 +70,7 @@ function normalizePeriod(cp){
 }
 
 function getAllocations(){
-  if(state.payFrequency === 'mensual'){
+  if(state.payFrequency === 'mensual' || state.payFrequency === 'independiente'){
     return { fijos: Math.round(state.fijosMensual), libre: Math.round(state.variablesMensual) };
   }
   return {
@@ -84,12 +85,13 @@ function archiveIfNeeded(period){
     normalizePeriod(cp);
     const alloc = getAllocations();
     const ingresoExtra = (cp.incomes||[]).reduce((s,i)=>s+i.amount,0);
+    const baseSalary = state.payFrequency === 'independiente' ? 0 : state.salary;
     state.history.unshift({
       key: cp.key, label: cp.label,
       fijosAlloc: alloc.fijos, fijosSpent: cp.spent.fijos,
       libreAlloc: alloc.libre, libreSpent: cp.spent.libre,
       extraAlloc: extraPoolTotal(period, cp), extraSpent: cp.spent.extra,
-      ingresoExtra
+      ingresoExtra: baseSalary + ingresoExtra
     });
     state.currentPeriod = null;
   }
@@ -143,16 +145,16 @@ function render(){
   if(!state.goals) state.goals = [];
 
   const today = new Date();
-  const period = computePeriod(today, state.payDay, state.payFrequency||'quincenal');
+  const freq = state.payFrequency || 'quincenal';
+  const period = computePeriod(today, state.payDay, freq);
   archiveIfNeeded(period);
   saveState();
 
-  const freq = state.payFrequency || 'quincenal';
   const userName = state.userName || '';
   
   const titleEl = document.getElementById('mainTitle');
   if(titleEl) {
-    titleEl.textContent = freq==='mensual' ? 'Mes en curso' : 'Quincena en curso';
+    titleEl.textContent = freq==='mensual' ? 'Mes en curso' : freq==='independiente' ? 'Ciclo Independiente' : 'Quincena en curso';
   }
   
   let userHeaderEl = document.getElementById('userGreeting');
@@ -171,7 +173,7 @@ function render(){
 
   app.innerHTML = `
     <div class="tabs">
-      <button type="button" class="tab ${currentTab==='dashboard'?'active':''}" data-tab="dashboard">${freq==='mensual'?'Mes':'Quincena'}</button>
+      <button type="button" class="tab ${currentTab==='dashboard'?'active':''}" data-tab="dashboard">${freq==='mensual'?'Mes':freq==='independiente'?'Independiente':'Quincena'}</button>
       <button type="button" class="tab ${currentTab==='extra'?'active':''}" data-tab="extra">Dinero libre</button>
       <button type="button" class="tab ${currentTab==='loans'?'active':''}" data-tab="loans">🤝 Préstamos</button>
       <button type="button" class="tab ${currentTab==='assistant'?'active':''}" data-tab="assistant">🤖 Asistente</button>
@@ -195,15 +197,18 @@ function render(){
   else if(currentTab==='loans'){ tc.innerHTML = renderLoans(); bindLoans(); }
   else if(currentTab==='assistant'){ tc.innerHTML = renderAssistant(period); bindAssistant(period); }
   else if(currentTab==='goals'){ tc.innerHTML = renderGoals(); bindGoals(); }
-  else if(currentTab==='settings'){ tc.innerHTML = renderSetup({userName:state.userName, salary:state.salary, payDay:state.payDay, fijosMensual:state.fijosMensual, variablesMensual:state.variablesMensual, payFrequency:state.payFrequency||'quincenal'}); bindSetup(); }
+  else if(currentTab==='settings'){ tc.innerHTML = renderSetup({userName:state.userName, salary:state.salary, payDay:state.payDay, fijosMensual:state.fijosMensual, variablesMensual:state.variablesMensual, payFrequency:freq}); bindSetup(); }
 
   updateMobileNav();
 }
 
 function renderSetup(prefill){
-  const s = prefill || {userName:'', salary:950000, payDay:15, fijosMensual:710000, variablesMensual:300000, payFrequency:'quincenal'};
+  const s = prefill || {userName:'', salary:950000, payDay:30, fijosMensual:710000, variablesMensual:300000, payFrequency:'quincenal'};
   const freq = s.payFrequency || 'quincenal';
   const apiKey = getGeminiKey();
+
+  const salaryLabelText = freq === 'mensual' ? 'Sueldo neto mensual' : 'Sueldo neto por quincena';
+  const cutoffLabelText = freq === 'mensual' || freq === 'independiente' ? 'Día límite o cierre de mes' : 'Día de corte de la primera quincena';
 
   return `
     <div class="panel" id="setupPanel">
@@ -214,14 +219,18 @@ function renderSetup(prefill){
           <input type="text" id="inUserName" value="${escapeHtml(s.userName||'')}" placeholder="Ej: Darikson">
         </div>
         <div class="field">
-          <label>¿Cómo te pagan?</label>
+          <label>¿Cómo manejas tus ingresos?</label>
           <div class="freq-toggle" id="freqToggle">
             <button type="button" class="freqBtn ${freq==='quincenal'?'active':''}" data-freq="quincenal">Quincenal</button>
             <button type="button" class="freqBtn ${freq==='mensual'?'active':''}" data-freq="mensual">Mensual</button>
+            <button type="button" class="freqBtn ${freq==='independiente'?'active':''}" data-freq="independiente">Independiente</button>
           </div>
         </div>
-        <div class="field"><label id="salaryLabel">${freq==='mensual'?'Sueldo neto mensual':'Sueldo neto por quincena'}</label><input type="number" id="inSalary" value="${s.salary}"></div>
-        <div class="field"><label id="cutoffLabel">${freq==='mensual'?'Día del mes en que te pagan':'Día de corte de la primera quincena'}</label><input type="number" id="inCutoff" min="1" max="31" value="${s.payDay}"></div>
+        <div class="field" style="${freq === 'independiente' ? 'display:none;' : ''}">
+          <label id="salaryLabel">${salaryLabelText}</label>
+          <input type="number" id="inSalary" value="${s.salary}">
+        </div>
+        <div class="field"><label id="cutoffLabel">${cutoffLabelText}</label><input type="number" id="inCutoff" min="1" max="31" value="${s.payDay}"></div>
         <div class="row2">
           <div class="field"><label>Gastos fijos al mes</label><input type="number" id="inFijos" value="${s.fijosMensual}"></div>
           <div class="field"><label>Gastos variables al mes</label><input type="number" id="inVar" value="${s.variablesMensual}"></div>
@@ -244,6 +253,23 @@ function bindSetup(){
       e.preventDefault();
       selectedFreq = btn.getAttribute('data-freq');
       document.querySelectorAll('.freqBtn').forEach(b=>b.classList.toggle('active', b===btn));
+
+      const salaryFieldContainer = document.getElementById('inSalary')?.closest('.field');
+      if (salaryFieldContainer) {
+        if (selectedFreq === 'independiente') {
+          salaryFieldContainer.style.display = 'none';
+        } else {
+          salaryFieldContainer.style.display = 'block';
+          const salaryLabel = document.getElementById('salaryLabel');
+          if (salaryLabel) {
+            salaryLabel.textContent = selectedFreq === 'mensual' ? 'Sueldo neto mensual' : 'Sueldo neto por quincena';
+          }
+        }
+      }
+      const cutoffLabel = document.getElementById('cutoffLabel');
+      if (cutoffLabel) {
+        cutoffLabel.textContent = (selectedFreq === 'mensual' || selectedFreq === 'independiente') ? 'Día límite o cierre de mes' : 'Día de corte de la primera quincena';
+      }
     });
   });
 
@@ -252,14 +278,15 @@ function bindSetup(){
     setupForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const userName = document.getElementById('inUserName').value.trim();
-      const salary = Number(document.getElementById('inSalary').value);
+      const salaryInput = document.getElementById('inSalary');
+      const salary = salaryInput ? Number(salaryInput.value) : 0;
       const cutoff = Number(document.getElementById('inCutoff').value);
       const fijosMensual = Number(document.getElementById('inFijos').value);
       const variablesMensual = Number(document.getElementById('inVar').value);
       const apiKey = document.getElementById('inApiKey').value.trim();
       const errEl = document.getElementById('setupErr');
 
-      if(!salary || salary<=0){ if(errEl) errEl.textContent = 'Ingresa un sueldo válido.'; return; }
+      if(selectedFreq !== 'independiente' && (!salary || salary<=0)){ if(errEl) errEl.textContent = 'Ingresa un sueldo válido.'; return; }
 
       if(apiKey) localStorage.setItem('gemini_api_key', apiKey);
 
@@ -267,7 +294,7 @@ function bindSetup(){
       state = state || {history:[], currentPeriod:null, goals:[], loans:[]};
       state.userName = userName;
       state.payFrequency = selectedFreq;
-      state.salary = salary; 
+      state.salary = selectedFreq === 'independiente' ? 0 : salary; 
       state.payDay = cutoff;
       state.fijosMensual = fijosMensual; 
       state.variablesMensual = variablesMensual;
@@ -288,6 +315,7 @@ function bindSetup(){
 function renderDashboard(period){
   const alloc = getAllocations();
   const cp = state.currentPeriod;
+  const freq = state.payFrequency || 'quincenal';
   const totalDays = period.totalDays;
   let ticks = '';
   for(let i=1;i<=totalDays;i++){
@@ -296,7 +324,7 @@ function renderDashboard(period){
     ticks += `<div class="${cls}"></div>`;
   }
   const ingresoExtra = (cp.incomes||[]).reduce((s,i)=>s+i.amount,0);
-  const ingresoTotal = state.salary + ingresoExtra;
+  const ingresoTotal = (freq === 'independiente' ? 0 : state.salary) + ingresoExtra;
 
   const fijosPct = Math.round((cp.spent.fijos/Math.max(1,alloc.fijos))*100);
   const librePct = Math.round((cp.spent.libre/Math.max(1,alloc.libre))*100);
@@ -312,40 +340,71 @@ function renderDashboard(period){
 
   const incomesHtml = (cp.incomes && cp.incomes.length) ? cp.incomes.slice().reverse().map(i => `
     <li>
-      <span>${i.note ? escapeHtml(i.note) : 'Ingreso Adicional'}</span>
+      <span>${i.note ? escapeHtml(i.note) : 'Ingreso Diario'}</span>
       <span style="display:flex;align-items:center;gap:8px;color:#2e7d32;"><b>+${fmt(i.amount)}</b><button type="button" class="del" data-inc-id="${i.id}">✕</button></span>
     </li>
-  `).join('') : '<div class="empty">No hay ingresos extra registrados.</div>';
+  `).join('') : '<div class="empty">No hay ingresos registrados todavía.</div>';
 
-  return `
-    <div class="hero">
+  let heroCardContent = '';
+  let ingresoBarContent = '';
+  let registrarIngresoSection = '';
+
+  if (freq === 'independiente') {
+    heroCardContent = `
       <div class="hero-top">
         <div>
           <div class="hero-label">${period.label}</div>
-          <div class="days-num">${period.remaining}<span>días para tu próximo pago</span></div>
+          <div class="days-num">${fmt(ingresoTotal)}<span>Total acumulado ganado este mes</span></div>
+        </div>
+      </div>
+    `;
+    ingresoBarContent = `
+      <div class="incomebar">
+        <span>Ingreso acumulado del mes</span>
+        <b>${fmt(ingresoTotal)}</b>
+      </div>
+    `;
+    registrarIngresoSection = `
+      <div class="panel" style="margin-bottom: 16px;">
+        <h2>💵 Registrar Ingreso Diario</h2>
+        <form id="incForm" class="expense-form">
+          <input type="number" id="incAmount" placeholder="Monto ganado hoy" required>
+          <input type="text" id="incNote" placeholder="Concepto (ej. Trabajo, cliente...)">
+          <button type="submit">Agregar Ingreso</button>
+        </form>
+        <div class="err" id="incErr"></div>
+        
+        <h3 style="margin-top:16px; font-size: 0.95rem; color:#555;">Ingresos sumados este mes:</h3>
+        <ul class="moves" style="margin-top:8px;">${incomesHtml}</ul>
+      </div>
+    `;
+  } else {
+    heroCardContent = `
+      <div class="hero-top">
+        <div>
+          <div class="hero-label">${period.label}</div>
+          <div class="days-num">${period.remaining}<span>días para cierre de ciclo</span></div>
         </div>
       </div>
       <div class="timeline">${ticks}<div class="coin">$</div></div>
       <div class="timeline-caption"><span>Día ${period.elapsed} de ${totalDays}</span><span>Base: ${fmt(state.salary)}</span></div>
+    `;
+    ingresoBarContent = `
+      <div class="incomebar">
+        <span>Ingreso disponible este período</span>
+        <b>${fmt(ingresoTotal)}</b>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="hero">
+      ${heroCardContent}
     </div>
 
-    <div class="incomebar">
-      <span>Ingreso disponible este período</span>
-      <b>${fmt(ingresoTotal)}</b>
-    </div>
+    ${ingresoBarContent}
 
-    <div class="panel" style="margin-bottom: 16px;">
-      <h2>💰 Registrar Ingreso Extra</h2>
-      <form id="incForm" class="expense-form">
-        <input type="number" id="incAmount" placeholder="Monto extra" required>
-        <input type="text" id="incNote" placeholder="Concepto (ej. Trabajo freelance, regalo...)">
-        <button type="submit">Agregar Ingreso</button>
-      </form>
-      <div class="err" id="incErr"></div>
-      
-      <h3 style="margin-top:16px; font-size: 0.95rem; color:#555;">Ingresos registrados en este período:</h3>
-      <ul class="moves" style="margin-top:8px;">${incomesHtml}</ul>
-    </div>
+    ${registrarIngresoSection}
 
     <div class="buckets">
       <div class="bucket fijos ${fijosPct>=100?'over':''}">
@@ -615,9 +674,9 @@ function bindLoans(){
 function buildFinancialContext(period) {
   const alloc = getAllocations();
   const cp = state.currentPeriod;
-  const daysLeft = period.remaining;
+  const freq = state.payFrequency || 'quincenal';
   const ingresoExtra = (cp.incomes || []).reduce((s, i) => s + i.amount, 0);
-  const ingresoTotal = state.salary + ingresoExtra;
+  const ingresoTotal = (freq === 'independiente' ? 0 : state.salary) + ingresoExtra;
 
   const fijosDisp = Math.max(0, alloc.fijos - cp.spent.fijos);
   const libreDisp = Math.max(0, alloc.libre - cp.spent.libre);
@@ -637,15 +696,12 @@ function buildFinancialContext(period) {
   const userName = state.userName || 'Usuario';
 
   return `
-Eres el asistente financiero personal en la app "Control Quincenal".
+Eres el asistente financiero personal en la app "Control Financiero".
 El nombre del usuario es ${userName}. Dirígete a él/ella por su nombre de forma natural, empática, clara y muy práctica. Utiliza pesos colombianos (COP).
 
 ESTADO FINANCIERO ACTUAL DE ${userName.toUpperCase()} (${period.label}):
-- Frecuencia de pago: ${state.payFrequency || 'quincenal'}
-- Sueldo base del período: ${fmt(state.salary)}
-- Ingresos adicionales este período: ${fmt(ingresoExtra)}
-- Ingreso total disponible: ${fmt(ingresoTotal)}
-- Días restantes para el próximo pago: ${daysLeft} días
+- Frecuencia de ciclo: ${freq}
+- Ingreso total acumulado este mes: ${fmt(ingresoTotal)}
 
 PRESUPUESTOS Y DISPONIBILIDAD:
 1. Gastos Fijos (Obligaciones):
