@@ -197,9 +197,7 @@ function render(){
   else if(currentTab==='loans'){ tc.innerHTML = renderLoans(); bindLoans(); }
   else if(currentTab==='assistant'){ tc.innerHTML = renderAssistant(period); bindAssistant(period); }
   else if(currentTab==='goals'){ tc.innerHTML = renderGoals(); bindGoals(); }
-  else if(currentTab==='settings'){ tc.innerHTML = renderSetup({userName:state.userName, salary:state.salary, payDay:state.payDay, fijosMensual:state.fijosMensual, variablesMensual:state.variablesMensual, payFrequency:freq}); bindSetup(); }
-
-  updateMobileNav();
+  else if(currentTab==='settings'){ tc.innerHTML = renderSetup({userName:state.userName, salary:state.salary, payDay:state.payDay, fijosMensual:state.fijosMensual, variablesMensual:state.variablesMensual, payFrequency:state.payFrequency||'quincenal'}); bindSetup(); }
 }
 
 function renderSetup(prefill){
@@ -395,6 +393,20 @@ function renderDashboard(period){
         <b>${fmt(ingresoTotal)}</b>
       </div>
     `;
+    registrarIngresoSection = `
+      <div class="panel" style="margin-bottom: 16px;">
+        <h2>💵 Registrar ingreso extra</h2>
+        <form id="incForm" class="expense-form">
+          <input type="number" id="incAmount" placeholder="Monto" required>
+          <input type="text" id="incNote" placeholder="Concepto (ej. Bono, venta...)">
+          <button type="submit">Agregar Ingreso</button>
+        </form>
+        <div class="err" id="incErr"></div>
+
+        <h3 style="margin-top:16px; font-size: 0.95rem; color:#555;">Ingresos extra este período:</h3>
+        <ul class="moves" style="margin-top:8px;">${incomesHtml}</ul>
+      </div>
+    `;
   }
 
   return `
@@ -570,24 +582,6 @@ function bindExtra(period){
 
       saveState();
       render();
-    });
-  }
-
-  const tc = document.getElementById('tabContent');
-  if(tc) {
-    tc.addEventListener('click', (e) => {
-      const btnDel = e.target.closest('.del[data-extra-id]');
-      if (btnDel) {
-        const id = btnDel.getAttribute('data-extra-id');
-        const cp = state.currentPeriod;
-        const idx = (cp.extraExpenses || []).findIndex(ex => ex.id === id);
-        if(idx > -1){
-          cp.spent.extra -= cp.extraExpenses[idx].amount;
-          cp.extraExpenses.splice(idx, 1);
-          saveState();
-          render();
-        }
-      }
     });
   }
 }
