@@ -252,10 +252,7 @@ function render(){
   if(!userHeaderEl && titleEl) {
     userHeaderEl = document.createElement('div');
     userHeaderEl.id = 'userGreeting';
-    userHeaderEl.style.fontSize = '1.3rem';
-    userHeaderEl.style.fontWeight = 'bold';
-    userHeaderEl.style.color = '#7c4dff';
-    userHeaderEl.style.marginBottom = '4px';
+    userHeaderEl.className = 'user-greeting';
     titleEl.parentNode.insertBefore(userHeaderEl, titleEl);
   }
   if(userHeaderEl) {

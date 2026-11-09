@@ -2,6 +2,8 @@
 
 Aplicación financiera web local-first en JavaScript, HTML y CSS, preparada para uso instalable en Android. Los datos se almacenan en IndexedDB en el navegador; no hay cuentas, backend ni sincronización en nube.
 
+**Aplicación en línea:** [Abrir Asistente Financiero](https://darksound186.github.io/Asistente-Financiero/)
+
 ## Funcionalidad
 
 - Registro de gastos, ingresos, presupuestos, metas y préstamos.
