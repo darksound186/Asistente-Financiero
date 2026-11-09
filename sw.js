@@ -1,51 +1,67 @@
-const CACHE_NAME = 'finanzas-v2';
-const STATIC_ASSETS = [
+const CACHE_PREFIX = 'asistente-financiero-';
+const CACHE_NAME = `${CACHE_PREFIX}shell-v1`;
+const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
+  './migration.js',
+  './storage.js',
   './app.js',
-  './manifest.webmanifest'
+  './manifest.webmanifest',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png'
 ];
 
-// Instalación: Guardar recursos estáticos en caché
-self.addEventListener('install', (event) => {
+self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// Activación: Limpieza de cachés antiguas
-self.addEventListener('activate', (event) => {
+self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      );
-    })
+    caches.keys()
+      .then(keys => Promise.all(
+        keys
+          .filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .map(key => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Estrategia de peticiones
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  
-  if (req.method !== 'GET' || !req.url.startsWith('http')) {
-    return;
-  }
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
 
-  event.respondWith(
-    fetch(req)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, responseClone));
-        }
-        return networkResponse;
-      })
-      .catch(() => caches.match(req).then((response) => response || caches.match('./index.html')))
-  );
+  const url = new URL(request.url);
+  const scope = new URL(self.registration.scope);
+  if (url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    try {
+      const response = await fetch(request);
+      if (response.ok && response.type === 'basic' && !url.search) {
+        await cache.put(request, response.clone());
+      }
+      return response;
+    } catch (error) {
+      const cached = await cache.match(request);
+      if (cached) return cached;
+
+      if (request.mode === 'navigate') {
+        const appShell = await cache.match(new URL('./index.html', scope).href);
+        if (appShell) return appShell;
+      }
+
+      return new Response('Recurso no disponible sin conexión.', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
+  })());
 });

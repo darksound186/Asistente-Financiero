@@ -1,29 +1,44 @@
-# 📱 Mi Finanzas Personales (PWA)
+# Asistente Financiero
 
-Asistente y control financiero personal transformado en una **Progressive Web App (PWA)** instalable en dispositivos móviles (Android / iOS) y accesible desde PC.
+Aplicación financiera web local-first en JavaScript, HTML y CSS, preparada para uso instalable en Android. Los datos se almacenan en IndexedDB en el navegador; no hay cuentas, backend ni sincronización en nube.
 
----https://darksound186.github.io/Asistente-Financiero/
+## Funcionalidad
 
-## 🚀 Características Principales
+- Registro de gastos, ingresos, presupuestos, metas y préstamos.
+- Respaldo JSON descargable y restauración local desde Ajustes.
+- Migración automática y verificable desde `localStorage`; el estado legacy se conserva como respaldo.
+- Modo offline para el shell de la aplicación y los datos ya guardados.
+- Asistente Gemini opcional: requiere una clave propia ingresada en Ajustes para la sesión actual. La clave no se guarda. Al usarlo, la pregunta y totales agregados se envían a Google; no se incluyen nombres, notas ni detalle de movimientos.
 
-* **Control Financiero:** Gestión de gastos, ingresos, metas de ahorro y análisis quincenal/mensual.
-* **Asistente Inteligente:** Chat con lógica de agente (`runAgent`), etapas de clarificación (`clarify`) y confirmación (`confirm`).
-* **Sincronización:** Respaldo de información integrado con Google Sheets.
-* **🤝 Módulo de Préstamos:** Registro y control de dinero prestado a terceros (estado 🟡 Pendiente / 🟢 Pagado) con historial y fechas de cobro.
-* **Experiencia PWA Nativa:**
-  * Navegación inferior (*Bottom Bar*) optimizada para teléfonos inteligentes.
-  * Modo independiente (*standalone*) sin barra de navegación del explorador.
-  * Soporte offline parcial para la interfaz estática.
-  * Respeto de áreas seguras (*notch* y barras gestuales en iOS y Android).
+La aplicación no proporciona autenticación, sincronización entre dispositivos ni recuperación de una clave perdida. Una clave introducida en el navegador sigue siendo accesible para el código cliente y no equivale a un secreto protegido por servidor.
 
----
-
-## 🛠️ Estructura del Proyecto
+## Archivos
 
 ```text
-├── index.html            # Estructura principal, modales y vista PWA
-├── styles.css            # Estilos UI responsive, bottom bar y adaptaciones móviles
-├── app.js                # Lógica del frontend, módulo de préstamos y navegación
-├── manifest.webmanifest  # Configuración e íconos para la instalación PWA
-├── sw.js                 # Service Worker (Estrategia Network-First para APIs)
-└── icons/                # Íconos de la aplicación (192x192, 512x512)
+index.html                 Estructura, manifest y navegación
+app.js                     Interfaz, finanzas, validaciones y asistente opcional
+migration.js               Conversión pura de datos legacy y fechas
+storage.js                 IndexedDB, migración, persistencia y respaldos
+styles.css                 Diseño responsive y accesibilidad visual
+manifest.webmanifest       Identidad y recursos de instalación PWA
+sw.js                      Caché local limitada al ámbito de esta app
+icons/                     Iconos PWA PNG
+tests/migration.test.js    Pruebas sin dependencias de la conversión legacy
+tests/storage.test.html    Prueba de navegador para IndexedDB y respaldos
+```
+
+## Desarrollo y comprobaciones
+
+Abrir `index.html` directamente como archivo no permite probar Service Worker ni todas las funciones de PWA. Servir el directorio desde un origen HTTPS o `localhost`. No se necesita un paso de compilación.
+
+Ejecutar pruebas de conversión con Node.js:
+
+```powershell
+node --test tests/*.test.js
+```
+
+Para validar IndexedDB, servir el proyecto y abrir `tests/storage.test.html` en un perfil de navegador de prueba. El resultado debe mostrar `PASS`.
+
+## Instalación Android
+
+Desplegar por HTTPS. Confirmar que `manifest.webmanifest`, los iconos y `sw.js` responden desde la ruta del proyecto, luego probar la opción de instalación y el inicio standalone en Chrome Android. La disponibilidad de la opción depende también de la versión y políticas del navegador.

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Prueba local de almacenamiento</title>
+</head>
+<body>
+  <pre id="result">RUNNING</pre>
+  <script>
+    window.FINANCE_DB_NAME = 'asistente-financiero-test';
+    window.FINANCE_LEGACY_KEY = 'quincena-state-v3-test';
+    window.FINANCE_GEMINI_KEY_NAME = 'gemini_api_key-test';
+  </script>
+  <script src="../migration.js"></script>
+  <script src="../storage.js"></script>
+  <script>
+    const output = document.getElementById('result');
+    const assert = (condition, message) => {
+      if (!condition) throw new Error(message);
+    };
+
+    function deleteDatabase() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase('asistente-financiero-test');
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => reject(new Error('La base de datos quedó bloqueada.'));
+      });
+    }
+
+    async function run() {
+      await deleteDatabase();
+      const timestamp = Date.UTC(2026, 10, 8, 18, 30);
+      const legacy = {
+        salary: 1000000,
+        payDay: 15,
+        payFrequency: 'quincenal',
+        fijosMensual: 400000,
+        variablesMensual: 300000,
+        history: [{ key: '2026-10-B', fijosAlloc: 200000, fijosSpent: 190000 }],
+        currentPeriod: {
+          key: '2026-11-A',
+          label: '1–15 de noviembre',
+          spent: { fijos: 12500, libre: 0, extra: 0 },
+          expenses: [{
+            id: `${timestamp.toString(36)}abcd`,
+            bucket: 'fijos',
+            category: 'Servicios',
+            amount: 12500,
+            note: 'Agua'
+          }],
+          incomes: [],
+          extraExpenses: []
+        },
+        goals: [{ id: 'goal-1', name: 'Fondo', target: 500000, saved: 10000 }],
+        loans: [{ id: 'loan-1', person: 'Persona', pending: 20000, status: 'Pendiente' }]
+      };
+      const raw = JSON.stringify(legacy);
+      localStorage.setItem('quincena-state-v3-test', raw);
+      localStorage.setItem('gemini_api_key-test', 'test-only-not-a-real-key');
+
+      let state = await FinanceDB.loadState();
+      assert(state.currentPeriod.expenses.length === 1, 'No se migró el gasto activo.');
+      assert(state.currentPeriod.expenses[0].occurredAt === new Date(timestamp).toISOString(), 'No se recuperó la fecha del identificador legacy.');
+      assert(state.currentPeriod.expenses[0].occurredOnLocal === null, 'Se inventó una fecha local sin conservar la zona horaria legacy.');
+      assert(state.currentPeriod.expenses[0].budgetRef.bucket === 'fijos', 'Se perdió la referencia al presupuesto.');
+      assert(state.history[0].fijosSpent === 190000, 'Se perdió el agregado histórico.');
+      assert(localStorage.getItem('quincena-state-v3-test') === raw, 'Se alteró el respaldo legacy original.');
+      assert(localStorage.getItem('gemini_api_key-test') === null, 'No se eliminó la clave persistida.');
+      assert((await FinanceDB.getMigrationNotice()).length > 0, 'No se informó la eliminación de la clave.');
+
+      state.currentPeriod.expenses[0].note = 'Nota actualizada';
+      await FinanceDB.saveState(state);
+      state = await FinanceDB.loadState();
+      assert(state.currentPeriod.expenses[0].note === 'Nota actualizada', 'No persistió la actualización del gasto.');
+      assert(state.goals[0].saved === 10000 && state.loans[0].pending === 20000, 'No persistieron metas o préstamos.');
+
+      const backup = await FinanceDB.exportBackup();
+      assert(backup.transactions.length === 1, 'La exportación no contiene el gasto.');
+      state.currentPeriod.expenses[0].note = 'Cambio posterior';
+      await FinanceDB.saveState(state);
+      await FinanceDB.importBackup(JSON.stringify(backup));
+      state = await FinanceDB.loadState();
+      assert(state.currentPeriod.expenses[0].note === 'Nota actualizada', 'No se restauró el respaldo.');
+
+      await FinanceDB.importBackup(JSON.stringify({ format: 'asistente-financiero-legacy', version: 1, raw }));
+      state = await FinanceDB.loadState();
+      assert(state.currentPeriod.expenses[0].note === 'Agua', 'No se pudo restaurar un respaldo legacy válido.');
+
+      await deleteDatabase();
+      const corrupt = '{datos incompletos';
+      localStorage.setItem('quincena-state-v3-test', corrupt);
+      let rejected = false;
+      try {
+        await FinanceDB.loadState();
+      } catch {
+        rejected = true;
+      }
+      assert(rejected, 'Se aceptó silenciosamente un JSON corrupto.');
+      assert(localStorage.getItem('quincena-state-v3-test') === corrupt, 'Se alteraron datos legacy corruptos.');
+
+      const unrelatedCache = `unrelated-app-cache-test-${crypto.randomUUID()}`;
+      const cache = await caches.open(unrelatedCache);
+      await cache.put(new URL('./cache-marker', location.href), new Response('keep'));
+      const registration = await navigator.serviceWorker.register('../sw.js', { scope: '../' });
+      await navigator.serviceWorker.ready;
+      assert(await caches.has(unrelatedCache), 'El Service Worker eliminó una caché ajena.');
+      assert(await caches.has('asistente-financiero-shell-v1'), 'No se instaló la caché del shell.');
+      await caches.delete(unrelatedCache);
+
+      output.textContent = 'PASS: IndexedDB, migración, respaldo, restauración y caché ajena.';
+    }
+
+    run().catch(error => {
+      output.textContent = `FAIL: ${error.stack || error.message}`;
+      document.body.dataset.testResult = 'fail';
+    }).then(() => {
+      if (output.textContent.startsWith('PASS:')) document.body.dataset.testResult = 'pass';
+    });
+  </script>
+</body>
+</html>

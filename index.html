@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0f172a">
+  <meta name="description" content="Control financiero personal privado y local-first.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Finanzas">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="manifest" href="./manifest.webmanifest">
-  <meta charset="UTF-8">
   <title>Control Financiero</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -27,40 +27,36 @@
   </div>
 
   <!-- Navegación Inferior para Móviles -->
-  <nav class="mobile-nav" id="mobileNav">
-    <button class="mobile-nav-item active" onclick="switchMobileTab('dashboard')">
+  <nav class="mobile-nav" id="mobileNav" aria-label="Navegación principal">
+    <button type="button" class="mobile-nav-item active" data-mobile-tab="dashboard" aria-label="Inicio" aria-current="page">
       <span class="nav-icon">🏠</span>
       <span class="nav-label">Inicio</span>
     </button>
-    <button class="mobile-nav-item" onclick="switchMobileTab('extra')">
+    <button type="button" class="mobile-nav-item" data-mobile-tab="extra" aria-label="Dinero sin asignar">
       <span class="nav-icon">💰</span>
       <span class="nav-label">Sin Asignar</span>
     </button>
-    <button class="mobile-nav-item nav-action-btn" onclick="abrirModalGastoRapido()">
+    <button type="button" class="mobile-nav-item nav-action-btn" id="quickExpense" aria-label="Registrar gasto">
       <span class="nav-icon">➕</span>
       <span class="nav-label">Registrar</span>
     </button>
-    <button class="mobile-nav-item" onclick="switchMobileTab('assistant')">
+    <button type="button" class="mobile-nav-item" data-mobile-tab="assistant" aria-label="Asistente">
       <span class="nav-icon">🤖</span>
       <span class="nav-label">Asistente</span>
     </button>
-    <button class="mobile-nav-item" onclick="switchMobileTab('loans')">
+    <button type="button" class="mobile-nav-item" data-mobile-tab="loans" aria-label="Préstamos">
       <span class="nav-icon">🤝</span>
       <span class="nav-label">Préstamos</span>
     </button>
-    <button class="mobile-nav-item" onclick="switchMobileTab('settings')">⚙️ Ajustes</button>
+    <button type="button" class="mobile-nav-item" data-mobile-tab="settings" aria-label="Ajustes">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Ajustes</span>
+    </button>
   </nav>
 
   <!-- Scripts -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('Service Worker registrado con éxito:', reg.scope))
-          .catch(err => console.error('Error registrando Service Worker:', err));
-      });
-    }
-  </script>
-  <script src="app.js"></script>
+  <script src="./migration.js"></script>
+  <script src="./storage.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>

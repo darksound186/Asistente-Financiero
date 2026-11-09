@@ -1,6 +1,6 @@
-const STORE_KEY = 'quincena-state-v3';
 let state = null;
 let currentTab = 'dashboard';
+let sessionGeminiKey = '';
 
 const CATS = {
   fijos: ['Plan celular','Mercado','Deudas','Gasolina/moto','Servicios','Arriendo','Salud','Educación','Otro fijo'],
@@ -8,23 +8,83 @@ const CATS = {
 };
 
 function getGeminiKey() {
-  return localStorage.getItem('gemini_api_key') || '';
+  return sessionGeminiKey;
 }
 
-function loadState(){
-  try{
-    const raw = localStorage.getItem(STORE_KEY);
-    if(raw) state = JSON.parse(raw);
-  }catch(e){ state = null; }
+async function loadState(){
+  state = await FinanceDB.loadState();
 }
 
-function saveState(){
-  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-  catch(e){ console.error('No se pudo guardar', e); }
+async function saveState(){
+  await FinanceDB.saveState(state);
+}
+
+function showPersistenceError(error) {
+  const app = document.getElementById('app');
+  if (!app) return;
+  let notice = document.getElementById('persistenceError');
+  if (!notice) {
+    notice = document.createElement('div');
+    notice.id = 'persistenceError';
+    notice.className = 'alert danger';
+    notice.setAttribute('role', 'alert');
+    app.prepend(notice);
+  }
+  notice.textContent = `No se pudieron guardar tus cambios: ${error.message}`;
+}
+
+function showNotice(message, className = 'alert warn') {
+  const app = document.getElementById('app');
+  if (!app || !message) return;
+  const notice = document.createElement('div');
+  notice.className = className;
+  notice.setAttribute('role', 'status');
+  notice.textContent = message;
+  app.prepend(notice);
+}
+
+function transactionDateFields(bucket) {
+  const now = new Date();
+  const local = FinanceMigration.toLocalDate(now);
+  const periodId = state.currentPeriod.key;
+  const allocations = getAllocations();
+  return {
+    occurredAt: now.toISOString(),
+    occurredOnLocal: local.date,
+    timezoneOffsetMinutes: local.timezoneOffsetMinutes,
+    dateQuality: 'exact',
+    periodId,
+    budgetRef: {
+      periodId,
+      bucket,
+      allocatedCop: bucket === 'fijos'
+        ? allocations.fijos
+        : bucket === 'libre'
+          ? allocations.libre
+          : bucket === 'extra'
+            ? extraPoolTotal(computePeriod(now, state.payDay, state.payFrequency), state.currentPeriod)
+            : null
+    }
+  };
+}
+
+async function persistAndRender() {
+  try {
+    await saveState();
+    render();
+  } catch (error) {
+    showPersistenceError(error);
+  }
 }
 
 function fmt(n){ return Number(n||0).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}); }
 function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
+function newId(){ return window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`; }
+function transactionDateLabel(item){
+  if(item.dateQuality === 'id-derived-utc' && item.occurredAt) return `Fecha derivada (UTC): ${new Date(item.occurredAt).toLocaleDateString('es-CO', { timeZone: 'UTC' })}`;
+  if(item.occurredOnLocal) return `Fecha: ${item.occurredOnLocal}`;
+  return 'Fecha por confirmar';
+}
 
 function computePeriod(today, cutoff, frequency){
   const y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
@@ -63,7 +123,9 @@ function extraPoolTotal(period, cp){
 
 function normalizePeriod(cp){
   if(!cp.spent) cp.spent = {fijos:0,libre:0,extra:0};
-  if(typeof cp.spent.extra !== 'number') cp.spent.extra = 0;
+  for (const bucket of ['fijos', 'libre', 'extra']) {
+    if (!Number.isFinite(cp.spent[bucket])) cp.spent[bucket] = 0;
+  }
   if(!cp.extraExpenses) cp.extraExpenses = [];
   if(!cp.incomes) cp.incomes = [];
   if(!cp.expenses) cp.expenses = [];
@@ -71,47 +133,77 @@ function normalizePeriod(cp){
 
 function getAllocations(){
   if(state.payFrequency === 'mensual' || state.payFrequency === 'independiente'){
-    return { fijos: Math.round(state.fijosMensual), libre: Math.round(state.variablesMensual) };
+    return { fijos: Math.round(Number(state.fijosMensual)||0), libre: Math.round(Number(state.variablesMensual)||0) };
   }
   return {
-    fijos: Math.round(state.fijosMensual/2),
-    libre: Math.round(state.variablesMensual/2)
+    fijos: Math.round((Number(state.fijosMensual)||0)/2),
+    libre: Math.round((Number(state.variablesMensual)||0)/2)
   };
 }
 
 function archiveIfNeeded(period){
+  let changed = false;
   if(state.currentPeriod && state.currentPeriod.key !== period.key){
     const cp = state.currentPeriod;
     normalizePeriod(cp);
-    const alloc = getAllocations();
+    const snapshot = cp.budgetSnapshot || {
+      salaryCop: Number(state.salary) || 0,
+      fixedCop: getAllocations().fijos,
+      flexibleCop: getAllocations().libre,
+      extraCop: extraPoolTotal(period, cp)
+    };
     const ingresoExtra = (cp.incomes||[]).reduce((s,i)=>s+i.amount,0);
-    const baseSalary = state.payFrequency === 'independiente' ? 0 : state.salary;
+    const baseSalary = (snapshot.frequency || state.payFrequency) === 'independiente' ? 0 : snapshot.salaryCop;
     state.history.unshift({
       key: cp.key, label: cp.label,
-      fijosAlloc: alloc.fijos, fijosSpent: cp.spent.fijos,
-      libreAlloc: alloc.libre, libreSpent: cp.spent.libre,
-      extraAlloc: extraPoolTotal(period, cp), extraSpent: cp.spent.extra,
+      fijosAlloc: snapshot.fixedCop, fijosSpent: cp.spent.fijos,
+      libreAlloc: snapshot.flexibleCop, libreSpent: cp.spent.libre,
+      extraAlloc: snapshot.extraCop, extraSpent: cp.spent.extra,
       ingresoExtra: baseSalary + ingresoExtra
     });
     state.currentPeriod = null;
+    changed = true;
   }
   if(!state.currentPeriod){
-    state.currentPeriod = {key:period.key, label:period.label, spent:{fijos:0,libre:0,extra:0}, expenses:[], incomes:[], extraExpenses:[]};
+    const currentPeriod = {
+      key:period.key,
+      label:period.label,
+      startDate: FinanceMigration.toLocalDate(new Date(period.year, period.month, period.startDay)).date,
+      endDate: FinanceMigration.toLocalDate(new Date(period.year, period.month, period.endDay)).date,
+      dateQuality:'exact',
+      spent:{fijos:0,libre:0,extra:0},
+      expenses:[],
+      incomes:[],
+      extraExpenses:[]
+    };
+    const allocations = getAllocations();
+    currentPeriod.budgetSnapshot = {
+      salaryCop: Number(state.salary) || 0,
+      fixedCop: allocations.fijos,
+      flexibleCop: allocations.libre,
+      extraCop: extraPoolTotal(period, currentPeriod),
+      frequency: state.payFrequency || 'quincenal'
+    };
+    currentPeriod.budgetQuality = 'snapshot';
+    state.currentPeriod = currentPeriod;
+    changed = true;
   } else {
-    state.currentPeriod.label = period.label;
+    if (state.currentPeriod.label !== period.label) {
+      state.currentPeriod.label = period.label;
+      changed = true;
+    }
     normalizePeriod(state.currentPeriod);
   }
+  return changed;
 }
 
 function updateMobileNav() {
   const items = document.querySelectorAll('.mobile-nav-item');
   items.forEach(item => {
-    const onclickAttr = item.getAttribute('onclick') || '';
-    if (onclickAttr.includes(`'${currentTab}'`)) {
-      item.classList.add('active');
-    } else if (!onclickAttr.includes('abrirModalGastoRapido')) {
-      item.classList.remove('active');
-    }
+    const active = item.dataset.mobileTab === currentTab;
+    item.classList.toggle('active', active);
+    if (active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
   });
 }
 
@@ -147,8 +239,7 @@ function render(){
   const today = new Date();
   const freq = state.payFrequency || 'quincenal';
   const period = computePeriod(today, state.payDay, freq);
-  archiveIfNeeded(period);
-  saveState();
+  if (archiveIfNeeded(period)) saveState().catch(showPersistenceError);
 
   const userName = state.userName || '';
   
@@ -198,12 +289,12 @@ function render(){
   else if(currentTab==='assistant'){ tc.innerHTML = renderAssistant(period); bindAssistant(period); }
   else if(currentTab==='goals'){ tc.innerHTML = renderGoals(); bindGoals(); }
   else if(currentTab==='settings'){ tc.innerHTML = renderSetup({userName:state.userName, salary:state.salary, payDay:state.payDay, fijosMensual:state.fijosMensual, variablesMensual:state.variablesMensual, payFrequency:state.payFrequency||'quincenal'}); bindSetup(); }
+  updateMobileNav();
 }
 
 function renderSetup(prefill){
   const s = prefill || {userName:'', salary:950000, payDay:30, fijosMensual:710000, variablesMensual:300000, payFrequency:'quincenal'};
   const freq = s.payFrequency || 'quincenal';
-  const apiKey = getGeminiKey();
 
   const salaryLabelText = freq === 'mensual' ? 'Sueldo neto mensual' : 'Sueldo neto por quincena';
   const cutoffLabelText = freq === 'mensual' || freq === 'independiente' ? 'Día límite o cierre de mes' : 'Día de corte de la primera quincena';
@@ -213,33 +304,42 @@ function renderSetup(prefill){
       <h2>${state ? 'Ajustar tu sistema' : 'Arma tu sistema financiero'}</h2>
       <form id="setupForm">
         <div class="field">
-          <label>¿Cómo te llamas?</label>
+          <label for="inUserName">¿Cómo te llamas?</label>
           <input type="text" id="inUserName" value="${escapeHtml(s.userName||'')}" placeholder="Ej: Darikson">
         </div>
         <div class="field">
-          <label>¿Cómo manejas tus ingresos?</label>
-          <div class="freq-toggle" id="freqToggle">
+          <div class="freq-toggle" id="freqToggle" role="group" aria-labelledby="frequencyLabel">
+            <span class="sr-only" id="frequencyLabel">¿Cómo manejas tus ingresos?</span>
             <button type="button" class="freqBtn ${freq==='quincenal'?'active':''}" data-freq="quincenal">Quincenal</button>
             <button type="button" class="freqBtn ${freq==='mensual'?'active':''}" data-freq="mensual">Mensual</button>
             <button type="button" class="freqBtn ${freq==='independiente'?'active':''}" data-freq="independiente">Independiente</button>
           </div>
         </div>
         <div class="field" style="${freq === 'independiente' ? 'display:none;' : ''}">
-          <label id="salaryLabel">${salaryLabelText}</label>
-          <input type="number" id="inSalary" value="${s.salary}">
+          <label id="salaryLabel" for="inSalary">${salaryLabelText}</label>
+          <input type="number" id="inSalary" min="1" step="1" value="${s.salary}">
         </div>
-        <div class="field"><label id="cutoffLabel">${cutoffLabelText}</label><input type="number" id="inCutoff" min="1" max="31" value="${s.payDay}"></div>
+        <div class="field"><label id="cutoffLabel" for="inCutoff">${cutoffLabelText}</label><input type="number" id="inCutoff" min="1" max="31" step="1" value="${s.payDay}"></div>
         <div class="row2">
-          <div class="field"><label>Gastos fijos al mes</label><input type="number" id="inFijos" value="${s.fijosMensual}"></div>
-          <div class="field"><label>Gastos variables al mes</label><input type="number" id="inVar" value="${s.variablesMensual}"></div>
+          <div class="field"><label for="inFijos">Gastos fijos al mes</label><input type="number" id="inFijos" min="0" step="1" value="${s.fijosMensual}"></div>
+          <div class="field"><label for="inVar">Gastos variables al mes</label><input type="number" id="inVar" min="0" step="1" value="${s.variablesMensual}"></div>
         </div>
         <div class="field">
-          <label>Gemini API Key (para el Asistente IA)</label>
-          <input type="password" id="inApiKey" value="${apiKey}" placeholder="Pega tu API Key de Google AI Studio">
+          <label for="inApiKey">Clave Gemini opcional (solo esta sesión)</label>
+          <input type="password" id="inApiKey" autocomplete="off" placeholder="No se guardará en este dispositivo">
+          <small>Una clave ingresada en una PWA no es secreta. Solo se conserva en memoria hasta cerrar o recargar esta pestaña.</small>
         </div>
         <button type="submit" class="btn">Guardar</button>
-        <div class="err" id="setupErr"></div>
+        <div class="err" id="setupErr" role="alert" aria-live="polite"></div>
       </form>
+      <section class="backup-tools" aria-labelledby="backupTitle">
+        <h3 id="backupTitle">Respaldo local</h3>
+        <p>El archivo incluye información financiera sensible. Guárdalo en un lugar privado.</p>
+        <button type="button" class="btn btn-blue" id="exportBackup" ${state ? '' : 'disabled'}>Descargar respaldo</button>
+        <label for="importBackupFile">Restaurar desde un respaldo JSON</label>
+        <input type="file" id="importBackupFile" accept="application/json,.json">
+        <div class="err" id="backupErr" role="alert" aria-live="polite"></div>
+      </section>
     </div>
   `;
 }
@@ -273,7 +373,7 @@ function bindSetup(){
 
   const setupForm = document.getElementById('setupForm');
   if(setupForm) {
-    setupForm.addEventListener('submit', (e) => {
+    setupForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const userName = document.getElementById('inUserName').value.trim();
       const salaryInput = document.getElementById('inSalary');
@@ -284,9 +384,15 @@ function bindSetup(){
       const apiKey = document.getElementById('inApiKey').value.trim();
       const errEl = document.getElementById('setupErr');
 
-      if(selectedFreq !== 'independiente' && (!salary || salary<=0)){ if(errEl) errEl.textContent = 'Ingresa un sueldo válido.'; return; }
+      if(selectedFreq !== 'independiente' && (!Number.isSafeInteger(salary) || salary<=0)){ if(errEl) errEl.textContent = 'Ingresa un sueldo entero válido en pesos.'; return; }
+      if (!Number.isInteger(cutoff) || cutoff < 1 || cutoff > 31 ||
+          !Number.isSafeInteger(fijosMensual) || fijosMensual < 0 ||
+          !Number.isSafeInteger(variablesMensual) || variablesMensual < 0) {
+        if (errEl) errEl.textContent = 'Revisa el día de corte y los presupuestos mensuales.';
+        return;
+      }
 
-      if(apiKey) localStorage.setItem('gemini_api_key', apiKey);
+      sessionGeminiKey = apiKey;
 
       const wasSetUp = !!state;
       state = state || {history:[], currentPeriod:null, goals:[], loans:[]};
@@ -303,11 +409,44 @@ function bindSetup(){
         state.goals = [{id:'seed-1', name:'Fondo de emergencia', target:800000, saved:0}];
       }
 
-      saveState();
+      archiveIfNeeded(computePeriod(new Date(), state.payDay, state.payFrequency));
       currentTab = 'dashboard';
-      render();
+      await persistAndRender();
     });
   }
+
+  document.getElementById('exportBackup')?.addEventListener('click', async () => {
+    try {
+      const backup = await FinanceDB.exportBackup();
+      FinanceDB.downloadJson(backup, 'asistente-financiero-respaldo.json');
+    } catch (error) {
+      const err = document.getElementById('backupErr');
+      if (err) err.textContent = error.message;
+    }
+  });
+
+  document.getElementById('importBackupFile')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!window.confirm('Restaurar reemplazará los datos actuales. Si hay datos, se descargará una copia y se conservará una copia local antes de continuar. ¿Continuar?')) {
+      event.target.value = '';
+      return;
+    }
+    try {
+      if (state) {
+        await saveState();
+        const currentBackup = await FinanceDB.exportBackup();
+        FinanceDB.downloadJson(currentBackup, 'asistente-financiero-respaldo-anterior.json');
+      }
+      await FinanceDB.importBackup(await file.text());
+      await loadState();
+      render();
+      showNotice('Respaldo restaurado correctamente.');
+    } catch (error) {
+      const err = document.getElementById('backupErr');
+      if (err) err.textContent = error.message;
+    }
+  });
 }
 
 function renderDashboard(period){
@@ -331,15 +470,15 @@ function renderDashboard(period){
 
   const movesHtml = (cp.expenses && cp.expenses.length) ? cp.expenses.slice().reverse().map(e => `
     <li>
-      <span>${e.note ? escapeHtml(e.note) : e.category}<span class="tag">${e.category}</span></span>
-      <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button type="button" class="del" data-id="${e.id}">✕</button></span>
+      <span>${e.note ? escapeHtml(e.note) : escapeHtml(e.category)}<span class="tag">${escapeHtml(e.category)}</span><small>${escapeHtml(transactionDateLabel(e))}</small></span>
+      <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button type="button" class="del" data-id="${escapeHtml(e.id)}" aria-label="Eliminar gasto de ${escapeHtml(e.category || 'este período')}">✕</button></span>
     </li>
   `).join('') : '<div class="empty">Sin movimientos todavía en este período.</div>';
 
   const incomesHtml = (cp.incomes && cp.incomes.length) ? cp.incomes.slice().reverse().map(i => `
     <li>
-      <span>${i.note ? escapeHtml(i.note) : 'Ingreso Diario'}</span>
-      <span style="display:flex;align-items:center;gap:8px;color:#2e7d32;"><b>+${fmt(i.amount)}</b><button type="button" class="del" data-inc-id="${i.id}">✕</button></span>
+      <span>${i.note ? escapeHtml(i.note) : 'Ingreso Diario'}<small>${escapeHtml(transactionDateLabel(i))}</small></span>
+      <span style="display:flex;align-items:center;gap:8px;color:#2e7d32;"><b>+${fmt(i.amount)}</b><button type="button" class="del" data-inc-id="${escapeHtml(i.id)}" aria-label="Eliminar ingreso">✕</button></span>
     </li>
   `).join('') : '<div class="empty">No hay ingresos registrados todavía.</div>';
 
@@ -366,7 +505,9 @@ function renderDashboard(period){
       <div class="panel" style="margin-bottom: 16px;">
         <h2>💵 Registrar Ingreso Diario</h2>
         <form id="incForm" class="expense-form">
-          <input type="number" id="incAmount" placeholder="Monto ganado hoy" required>
+          <label class="sr-only" for="incAmount">Monto ganado hoy</label>
+          <input type="number" id="incAmount" min="1" step="1" placeholder="Monto ganado hoy" required>
+          <label class="sr-only" for="incNote">Concepto del ingreso</label>
           <input type="text" id="incNote" placeholder="Concepto (ej. Trabajo, cliente...)">
           <button type="submit">Agregar Ingreso</button>
         </form>
@@ -397,7 +538,9 @@ function renderDashboard(period){
       <div class="panel" style="margin-bottom: 16px;">
         <h2>💵 Registrar ingreso extra</h2>
         <form id="incForm" class="expense-form">
-          <input type="number" id="incAmount" placeholder="Monto" required>
+          <label class="sr-only" for="incAmount">Monto del ingreso</label>
+          <input type="number" id="incAmount" min="1" step="1" placeholder="Monto" required>
+          <label class="sr-only" for="incNote">Concepto del ingreso</label>
           <input type="text" id="incNote" placeholder="Concepto (ej. Bono, venta...)">
           <button type="submit">Agregar Ingreso</button>
         </form>
@@ -436,16 +579,20 @@ function renderDashboard(period){
     <div class="panel">
       <h2>Registrar un gasto</h2>
       <form id="expForm" class="expense-form">
+        <label class="sr-only" for="expBucket">Presupuesto</label>
         <select id="expBucket">
           <option value="fijos">Obligaciones</option>
           <option value="libre" selected>Gasto libre</option>
         </select>
+        <label class="sr-only" for="expCategory">Categoría del gasto</label>
         <select id="expCategory">${catOptionsLibre}</select>
-        <input type="number" id="expAmount" placeholder="Monto" required>
+        <label class="sr-only" for="expAmount">Monto del gasto</label>
+        <input type="number" id="expAmount" min="1" step="1" placeholder="Monto" required>
+        <label class="sr-only" for="expNote">Nota del gasto</label>
         <input type="text" id="expNote" placeholder="Nota (opcional)">
         <button type="submit">Agregar</button>
       </form>
-      <div class="err" id="expErr"></div>
+      <div class="err" id="expErr" role="alert" aria-live="polite"></div>
       <ul class="moves">${movesHtml}</ul>
     </div>
   `;
@@ -464,26 +611,25 @@ function bindDashboard(){
 
   const incForm = document.getElementById('incForm');
   if(incForm){
-    incForm.addEventListener('submit', (e) => {
+    incForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const amount = Number(document.getElementById('incAmount').value);
       const note = document.getElementById('incNote').value.trim();
       const errEl = document.getElementById('incErr');
 
-      if(!amount || amount <= 0){ if(errEl) errEl.textContent = 'Ingresa un monto válido.'; return; }
+      if(!Number.isSafeInteger(amount) || amount <= 0){ if(errEl) errEl.textContent = 'Ingresa un monto entero válido en pesos.'; return; }
 
       if(!state.currentPeriod.incomes) state.currentPeriod.incomes = [];
-      const id = Date.now().toString(36);
-      state.currentPeriod.incomes.push({ id, amount, note });
+      const id = newId();
+      state.currentPeriod.incomes.push({ id, amount, note, ...transactionDateFields(null) });
 
-      saveState();
-      render();
+      await persistAndRender();
     });
   }
 
   const expForm = document.getElementById('expForm');
   if(expForm){
-    expForm.addEventListener('submit', (e) => {
+    expForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const bucket = bucketSel.value;
       const category = catSel.value;
@@ -491,28 +637,26 @@ function bindDashboard(){
       const note = document.getElementById('expNote').value.trim();
       const errEl = document.getElementById('expErr');
 
-      if(!amount || amount<=0){ if(errEl) errEl.textContent='Ingresa un monto válido.'; return; }
+      if(!Number.isSafeInteger(amount) || amount<=0){ if(errEl) errEl.textContent='Ingresa un monto entero válido en pesos.'; return; }
 
-      const id = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-      state.currentPeriod.expenses.push({id, bucket, amount, note, category});
+      const id = newId();
+      state.currentPeriod.expenses.push({id, bucket, amount, note, category, ...transactionDateFields(bucket)});
       state.currentPeriod.spent[bucket] += amount;
 
-      saveState();
-      render();
+      await persistAndRender();
     });
   }
 
   const tc = document.getElementById('tabContent');
   if(tc) {
-    tc.addEventListener('click', (e) => {
+    tc.addEventListener('click', async (e) => {
       const btnInc = e.target.closest('.del[data-inc-id]');
       if (btnInc) {
         const id = btnInc.getAttribute('data-inc-id');
         const idx = (state.currentPeriod.incomes||[]).findIndex(i=>i.id===id);
         if(idx > -1){
           state.currentPeriod.incomes.splice(idx,1);
-          saveState();
-          render();
+          await persistAndRender();
         }
         return;
       }
@@ -524,8 +668,7 @@ function bindDashboard(){
         if(idx>-1){
           state.currentPeriod.spent[state.currentPeriod.expenses[idx].bucket] -= state.currentPeriod.expenses[idx].amount;
           state.currentPeriod.expenses.splice(idx,1);
-          saveState(); 
-          render();
+          await persistAndRender();
         }
       }
     });
@@ -541,8 +684,8 @@ function renderExtra(period){
 
   const extraMovesHtml = (cp.extraExpenses && cp.extraExpenses.length) ? cp.extraExpenses.slice().reverse().map(e => `
     <li>
-      <span>${e.note ? escapeHtml(e.note) : 'Desembolso libre'}</span>
-      <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button type="button" class="del" data-extra-id="${e.id}">✕</button></span>
+      <span>${e.note ? escapeHtml(e.note) : 'Desembolso libre'}<small>${escapeHtml(transactionDateLabel(e))}</small></span>
+      <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button type="button" class="del" data-extra-id="${escapeHtml(e.id)}" aria-label="Eliminar desembolso">✕</button></span>
     </li>
   `).join('') : '<div class="empty">Sin desembolsos libres registrados en este período.</div>';
 
@@ -554,7 +697,9 @@ function renderExtra(period){
     <div class="panel">
       <h2>Registra un desembolso libre</h2>
       <form id="extraForm" class="expense-form">
-        <input type="number" id="extraAmount" placeholder="Monto" required>
+        <label class="sr-only" for="extraAmount">Monto del desembolso</label>
+        <input type="number" id="extraAmount" min="1" step="1" placeholder="Monto" required>
+        <label class="sr-only" for="extraNote">Concepto del desembolso</label>
         <input type="text" id="extraNote" placeholder="¿En qué?">
         <button type="submit">Agregar</button>
       </form>
@@ -568,22 +713,32 @@ function renderExtra(period){
 function bindExtra(period){
   const extraForm = document.getElementById('extraForm');
   if(extraForm){
-    extraForm.addEventListener('submit', (e) => {
+    extraForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const amount = Number(document.getElementById('extraAmount').value);
       const note = document.getElementById('extraNote').value.trim();
-      if(!amount || amount<=0) return;
+      if(!Number.isSafeInteger(amount) || amount<=0) return;
 
       const cp = state.currentPeriod;
       normalizePeriod(cp);
-      const id = Date.now().toString(36);
-      cp.extraExpenses.push({id, amount, note});
+      const id = newId();
+      cp.extraExpenses.push({id, amount, note, ...transactionDateFields('extra')});
       cp.spent.extra += amount;
 
-      saveState();
-      render();
+      await persistAndRender();
     });
   }
+
+  const tc = document.getElementById('tabContent');
+  tc?.addEventListener('click', async event => {
+    const button = event.target.closest('.del[data-extra-id]');
+    if (!button) return;
+    const index = state.currentPeriod.extraExpenses.findIndex(item => item.id === button.dataset.extraId);
+    if (index < 0) return;
+    state.currentPeriod.spent.extra -= state.currentPeriod.extraExpenses[index].amount;
+    state.currentPeriod.extraExpenses.splice(index, 1);
+    await persistAndRender();
+  });
 }
 
 function renderLoans(){
@@ -593,10 +748,10 @@ function renderLoans(){
       <li>
         <span><b>${escapeHtml(l.person)}</b> - ${isPagado ? 'Monto:' : 'Pendiente:'} ${fmt(l.pending)}</span>
         <span style="display:flex;align-items:center;gap:8px;">
-          <button type="button" class="tag tag-toggle ${isPagado ? 'pagado' : 'pendiente'}" data-loan-toggle="${l.id}">
-            ${l.status}
+          <button type="button" class="tag tag-toggle ${isPagado ? 'pagado' : 'pendiente'}" data-loan-toggle="${escapeHtml(l.id)}" aria-label="Cambiar estado del préstamo de ${escapeHtml(l.person)}">
+            ${escapeHtml(l.status)}
           </button>
-          <button type="button" class="del" data-loan-del="${l.id}">✕</button>
+          <button type="button" class="del" data-loan-del="${escapeHtml(l.id)}" aria-label="Eliminar préstamo de ${escapeHtml(l.person)}">✕</button>
         </span>
       </li>
     `;
@@ -607,8 +762,8 @@ function renderLoans(){
       <h2>Préstamos</h2>
       <form id="loanForm">
         <div class="row2">
-          <div class="field"><label>Persona</label><input type="text" id="loanPerson" placeholder="Nombre" required></div>
-          <div class="field"><label>Monto</label><input type="number" id="loanAmount" placeholder="Monto" required></div>
+          <div class="field"><label for="loanPerson">Persona</label><input type="text" id="loanPerson" placeholder="Nombre" required></div>
+          <div class="field"><label for="loanAmount">Monto</label><input type="number" id="loanAmount" min="1" step="1" placeholder="Monto" required></div>
         </div>
         <button type="submit" class="btn">Registrar Préstamo</button>
       </form>
@@ -620,36 +775,34 @@ function renderLoans(){
 function bindLoans(){
   const loanForm = document.getElementById('loanForm');
   if(loanForm){
-    loanForm.addEventListener('submit', (e) => {
+    loanForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const person = document.getElementById('loanPerson').value.trim();
       const amount = Number(document.getElementById('loanAmount').value);
-      if(!person || !amount || amount<=0) return;
+      if(!person || !Number.isSafeInteger(amount) || amount<=0) return;
 
       state.loans.push({
-        id: Date.now().toString(36), 
+        id: newId(),
         person, 
         original: amount, 
         returned: 0, 
         pending: amount, 
         status: 'Pendiente'
       });
-      saveState();
-      render();
+      await persistAndRender();
     });
   }
 
   const tc = document.getElementById('tabContent');
   if(tc) {
-    tc.addEventListener('click', (e) => {
+    tc.addEventListener('click', async (e) => {
       const toggleBtn = e.target.closest('[data-loan-toggle]');
       if (toggleBtn) {
         const id = toggleBtn.getAttribute('data-loan-toggle');
         const loan = state.loans.find(l => l.id === id);
         if(loan){
           loan.status = loan.status === 'Pagado' ? 'Pendiente' : 'Pagado';
-          saveState();
-          render();
+          await persistAndRender();
         }
         return;
       }
@@ -658,8 +811,7 @@ function bindLoans(){
       if (delBtn) {
         const id = delBtn.getAttribute('data-loan-del');
         state.loans = state.loans.filter(l => l.id !== id);
-        saveState();
-        render();
+        await persistAndRender();
       }
     });
   }
@@ -668,47 +820,20 @@ function bindLoans(){
 function buildFinancialContext(period) {
   const alloc = getAllocations();
   const cp = state.currentPeriod;
-  const freq = state.payFrequency || 'quincenal';
   const ingresoExtra = (cp.incomes || []).reduce((s, i) => s + i.amount, 0);
-  const ingresoTotal = (freq === 'independiente' ? 0 : state.salary) + ingresoExtra;
+  const ingresoTotal = ((state.payFrequency || 'quincenal') === 'independiente' ? 0 : state.salary) + ingresoExtra;
 
   const fijosDisp = Math.max(0, alloc.fijos - cp.spent.fijos);
   const libreDisp = Math.max(0, alloc.libre - cp.spent.libre);
   const extraTotal = extraPoolTotal(period, cp);
   const extraDisp = extraTotal - cp.spent.extra;
 
-  const prestamosActivos = (state.loans || [])
-    .filter(l => l.pending > 0 && l.status === 'Pendiente')
-    .map(l => `${l.person}: debe ${fmt(l.pending)}`)
-    .join(', ') || 'Ninguno';
-
-  const ultimosGastos = (cp.expenses || [])
-    .slice(-5)
-    .map(e => `- ${e.category} (${e.bucket}): ${fmt(e.amount)} ${e.note ? '('+e.note+')' : ''}`)
-    .join('\n') || 'Sin gastos recientes';
-
-  const userName = state.userName || 'Usuario';
-
   return `
-Eres el asistente financiero personal en la app "Control Financiero".
-El nombre del usuario es ${userName}. Dirígete a él/ella por su nombre de forma natural, empática, clara y muy práctica. Utiliza pesos colombianos (COP).
-
-ESTADO FINANCIERO ACTUAL DE ${userName.toUpperCase()} (${period.label}):
-- Frecuencia de ciclo: ${freq}
-- Ingreso total acumulado este mes: ${fmt(ingresoTotal)}
-
-PRESUPUESTOS Y DISPONIBILIDAD:
-1. Gastos Fijos (Obligaciones):
-   - Presupuestado: ${fmt(alloc.fijos)} | Gastado: ${fmt(cp.spent.fijos)} | Disponible: ${fmt(fijosDisp)}
-2. Gasto Libre:
-   - Presupuestado: ${fmt(alloc.libre)} | Gastado: ${fmt(cp.spent.libre)} | Disponible: ${fmt(libreDisp)}
-3. Dinero Libre:
-   - Total disponible: ${fmt(extraDisp)}
-
-OTRO DETALLE:
-- Préstamos pendientes por cobrar: ${prestamosActivos}
-- Últimos gastos registrados:
-${ultimosGastos}
+Resumen financiero agregado y anónimo en COP:
+- Ingreso del período: ${Math.round(ingresoTotal)}
+- Presupuesto fijo: ${Math.round(alloc.fijos)}; gastado: ${Math.round(cp.spent.fijos)}; disponible: ${Math.round(fijosDisp)}
+- Presupuesto flexible: ${Math.round(alloc.libre)}; gastado: ${Math.round(cp.spent.libre)}; disponible: ${Math.round(libreDisp)}
+- Dinero libre disponible: ${Math.round(extraDisp)}
 `;
 }
 
@@ -716,14 +841,16 @@ function renderAssistant(period){
   return `
     <div class="panel">
       <h2>Asistente Financiero IA</h2>
-      <div class="sub">Analizando en tiempo real tu estado financiero del período.</div>
+      <div class="sub">Opcional. No incluyas nombres, notas ni otros datos que identifiquen personas.</div>
       <div class="chat-log" id="chatLog">
-        <div class="bubble bot">¡Hola! Analicé tus finanzas de este período. ¿En qué te puedo ayudar hoy?</div>
+        <div class="bubble bot">Puedo responder usando totales agregados. No se envían nombres ni detalles de movimientos.</div>
       </div>
       <form id="chatForm" class="chat-input">
+        <label class="sr-only" for="chatInput">Pregunta para el asistente</label>
         <input type="text" id="chatInput" placeholder="Ej: ¿Cuánto dinero me queda libre para salir?" required>
         <button type="submit">Enviar</button>
       </form>
+      <label class="assistant-consent"><input type="checkbox" id="assistantConsent"> Entiendo que mi pregunta y los totales agregados se enviarán a Google Gemini.</label>
     </div>
   `;
 }
@@ -750,30 +877,24 @@ function bindAssistant(period){
       const apiKey = getGeminiKey().trim();
       if (!apiKey) {
         const loadingEl = document.getElementById(loadingId);
-        if (loadingEl) loadingEl.textContent = 'Por favor configura tu Gemini API Key en Ajustes (⚙️).';
+        if (loadingEl) loadingEl.textContent = 'Ingresa una clave propia solo para esta sesión en Ajustes. La app no la guarda.';
+        return;
+      }
+      if (!document.getElementById('assistantConsent')?.checked) {
+        const loadingEl = document.getElementById(loadingId);
+        if (loadingEl) loadingEl.textContent = 'Confirma el envío externo antes de continuar.';
         return;
       }
 
       try {
         const systemContext = buildFinancialContext(period);
-
-        let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta del usuario: ${userText}` }] }]
+            contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta: ${userText}` }] }]
           })
         });
-
-        if (!response.ok) {
-          response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: `${systemContext}\n\nPregunta del usuario: ${userText}` }] }]
-            })
-          });
-        }
 
         const data = await response.json();
         const loadingEl = document.getElementById(loadingId);
@@ -807,14 +928,15 @@ function renderGoals(){
       <div class="panel" style="margin-bottom: 12px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
           <b style="font-size: 1.1rem;">🎯 ${escapeHtml(g.name)}</b>
-          <button type="button" class="del" data-goal-del="${g.id}">✕</button>
+          <button type="button" class="del" data-goal-del="${escapeHtml(g.id)}" aria-label="Eliminar meta ${escapeHtml(g.name)}">✕</button>
         </div>
         <div style="font-size: 0.9rem; color: #666; margin-bottom: 6px;">
           Ahorrado: <b>${fmt(g.saved)}</b> de <b>${fmt(g.target)}</b> (${pct}%)
         </div>
         <div class="bar" style="margin-bottom: 12px;"><div class="bar-fill goal-fill" style="width:${pct}%; background: linear-gradient(90deg, #4caf50, #2e7d32);"></div></div>
-        <form class="goal-add-form expense-form" data-goal-id="${g.id}">
-          <input type="number" id="addSaved_${g.id}" placeholder="Abonar monto" required>
+        <form class="goal-add-form expense-form" data-goal-id="${escapeHtml(g.id)}">
+            <label class="sr-only" for="addSaved_${escapeHtml(g.id)}">Abono para ${escapeHtml(g.name)}</label>
+            <input type="number" id="addSaved_${escapeHtml(g.id)}" min="1" step="1" placeholder="Abonar monto" required>
           <button type="submit">Abonar</button>
         </form>
       </div>
@@ -825,8 +947,10 @@ function renderGoals(){
     <div class="panel" style="margin-bottom: 16px;">
       <h2>🎯 Crear nueva meta de ahorro</h2>
       <form id="newGoalForm" class="expense-form">
+        <label class="sr-only" for="goalName">Nombre de la meta</label>
         <input type="text" id="goalName" placeholder="Ej: Viaje, Moto, Fondo de emergencia" required>
-        <input type="number" id="goalTarget" placeholder="Meta ($)" required>
+        <label class="sr-only" for="goalTarget">Monto de la meta</label>
+        <input type="number" id="goalTarget" min="1" step="1" placeholder="Meta ($)" required>
         <button type="submit">Crear Meta</button>
       </form>
       <div class="err" id="goalErr"></div>
@@ -839,52 +963,49 @@ function renderGoals(){
 function bindGoals(){
   const newGoalForm = document.getElementById('newGoalForm');
   if(newGoalForm){
-    newGoalForm.addEventListener('submit', (e) => {
+    newGoalForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('goalName').value.trim();
       const target = Number(document.getElementById('goalTarget').value);
       const errEl = document.getElementById('goalErr');
 
-      if(!name || !target || target <= 0){
+      if(!name || !Number.isSafeInteger(target) || target <= 0){
         if(errEl) errEl.textContent = 'Ingresa un nombre y un monto objetivo válido.';
         return;
       }
 
       if(!state.goals) state.goals = [];
-      state.goals.push({ id: Date.now().toString(36), name, target, saved: 0 });
+      state.goals.push({ id: newId(), name, target, saved: 0 });
 
-      saveState();
-      render();
+      await persistAndRender();
     });
   }
 
   const tc = document.getElementById('tabContent');
   if(tc) {
-    tc.addEventListener('submit', (e) => {
+    tc.addEventListener('submit', async (e) => {
       const goalForm = e.target.closest('.goal-add-form');
       if(goalForm) {
         e.preventDefault();
         const id = goalForm.getAttribute('data-goal-id');
         const input = document.getElementById(`addSaved_${id}`);
         const amount = Number(input?.value);
-        if(!amount || amount <= 0) return;
+        if(!Number.isSafeInteger(amount) || amount <= 0) return;
 
         const goal = state.goals.find(g => g.id === id);
         if(goal){
           goal.saved += amount;
-          saveState();
-          render();
+          await persistAndRender();
         }
       }
     });
 
-    tc.addEventListener('click', (e) => {
+    tc.addEventListener('click', async (e) => {
       const delBtn = e.target.closest('[data-goal-del]');
       if (delBtn) {
         const id = delBtn.getAttribute('data-goal-del');
         state.goals = state.goals.filter(g => g.id !== id);
-        saveState();
-        render();
+        await persistAndRender();
       }
     });
   }
@@ -896,9 +1017,57 @@ function escapeHtml(str) {
   });
 }
 
-function initApp() {
-  loadState();
-  render();
+function showStartupError(error) {
+  const loading = document.getElementById('loading');
+  const app = document.getElementById('app');
+  if (loading) loading.style.display = 'none';
+  if (!app) return;
+  app.classList.remove('hidden');
+  app.style.display = 'block';
+  app.innerHTML = '<section class="panel"><h2>No se pudieron abrir tus datos</h2><p id="startupError" role="alert"></p><p>Los datos originales no se borraron. Descarga una copia antes de intentar recuperar el estado.</p><button type="button" class="btn btn-blue" id="downloadLegacyBackup">Descargar datos locales originales</button></section>';
+  document.getElementById('startupError').textContent = error.message;
+  const downloadButton = document.getElementById('downloadLegacyBackup');
+  if (localStorage.getItem('quincena-state-v3') === null) downloadButton.disabled = true;
+  downloadButton.addEventListener('click', () => {
+    try {
+      FinanceDB.downloadLegacyBackup();
+    } catch (backupError) {
+      document.getElementById('startupError').textContent = backupError.message;
+    }
+  });
+}
+
+async function initApp() {
+  try {
+    await loadState();
+    if (state) {
+      if (!Array.isArray(state.history)) state.history = [];
+      if (!Array.isArray(state.loans)) state.loans = [];
+      if (!Array.isArray(state.goals)) state.goals = [];
+      const period = computePeriod(new Date(), state.payDay, state.payFrequency || 'quincenal');
+      if (archiveIfNeeded(period)) await saveState();
+    }
+    render();
+    const notice = await FinanceDB.getMigrationNotice();
+    showNotice(notice);
+  } catch (error) {
+    showStartupError(error);
+  }
+}
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+      .catch(() => showNotice('No se pudo activar el modo instalable. La aplicación sigue disponible mientras haya conexión.'));
+  });
+}
+
+function bindMobileNavigation() {
+  document.querySelectorAll('[data-mobile-tab]').forEach(button => {
+    button.addEventListener('click', () => window.switchMobileTab(button.dataset.mobileTab));
+  });
+  document.getElementById('quickExpense')?.addEventListener('click', window.abrirModalGastoRapido);
 }
 
 if (document.readyState === 'loading') {
@@ -906,3 +1075,5 @@ if (document.readyState === 'loading') {
 } else {
   initApp();
 }
+bindMobileNavigation();
+registerServiceWorker();
