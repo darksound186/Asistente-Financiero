@@ -1,0 +1,132 @@
+name: Android debug APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app.js"
+      - "storage.js"
+      - "tests/**"
+      - "android/**"
+      - ".github/workflows/android-debug.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app.js"
+      - "storage.js"
+      - "tests/**"
+      - "android/**"
+      - ".github/workflows/android-debug.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test and build debug APK
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Set up Android SDK 35
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0"
+
+      - name: Set up Gradle from the versioned Wrapper
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+          validate-wrappers: true
+
+      - name: Run Android security checks
+        run: node --test
+
+      - name: Run notification parser tests (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/parser-tests"
+          javac -d "$RUNNER_TEMP/parser-tests" \
+            android/app/src/main/java/com/darksound186/asistentefinanciero/NotificationParser.java \
+            android/app/src/test/java/com/darksound186/asistentefinanciero/NotificationParserTest.java
+          java -cp "$RUNNER_TEMP/parser-tests" \
+            com.darksound186.asistentefinanciero.NotificationParserTest
+
+      - name: Run notification parser tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "parser-tests"
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          javac -d $output `
+            android\app\src\main\java\com\darksound186\asistentefinanciero\NotificationParser.java `
+            android\app\src\test\java\com\darksound186\asistentefinanciero\NotificationParserTest.java
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          java -cp $output com.darksound186.asistentefinanciero.NotificationParserTest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Make the Linux Wrapper executable
+        if: runner.os == 'Linux'
+        run: chmod +x ./gradlew
+        working-directory: android
+
+      - name: Build debug APK (Linux)
+        if: runner.os == 'Linux'
+        run: ./gradlew --no-daemon assembleDebug
+        working-directory: android
+
+      - name: Build debug APK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon assembleDebug
+        working-directory: android
+
+      - name: Verify debug APK exists (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          apk="android/app/build/outputs/apk/debug/app-debug.apk"
+          if [[ ! -f "$apk" ]]; then
+            echo "::error::Expected debug APK was not generated: $apk"
+            exit 1
+          fi
+
+      - name: Verify debug APK exists (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $apk = "android/app/build/outputs/apk/debug/app-debug.apk"
+          if (-not (Test-Path -LiteralPath $apk -PathType Leaf)) {
+            Write-Error "Expected debug APK was not generated: $apk"
+            exit 1
+          }
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: billetera-debug-apk-${{ runner.os }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

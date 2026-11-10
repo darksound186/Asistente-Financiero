@@ -1,0 +1,45 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <queries>
+        <package android:name="com.nequi.MobileApp" />
+        <package android:name="co.com.bancolombia.personas.superapp" />
+        <package android:name="com.nu.production" />
+        <package android:name="com.google.android.apps.walletnfcrel" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="Billetera"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:usesCleartextTraffic="false">
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize"
+            android:exported="false" />
+        <activity
+            android:name=".MainLauncherActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ReviewExpenseActivity"
+            android:exported="false" />
+        <service
+            android:name=".ExpenseNotificationListener"
+            android:exported="true"
+            android:label="Billetera: detectar compras"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <receiver
+            android:name=".SaveExpenseReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

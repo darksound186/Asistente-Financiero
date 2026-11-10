@@ -1,6 +1,7 @@
 let state = null;
 let currentTab = 'dashboard';
 let sessionGeminiKey = '';
+let processingNativeExpense = false;
 
 const CATS = {
   fijos: ['Plan celular','Mercado','Deudas','Gasolina/moto','Servicios','Arriendo','Salud','Educación','Otro fijo'],
@@ -43,8 +44,8 @@ function showNotice(message, className = 'alert warn') {
   app.prepend(notice);
 }
 
-function transactionDateFields(bucket) {
-  const now = new Date();
+function transactionDateFields(bucket, occurredAt = new Date()) {
+  const now = occurredAt;
   const local = FinanceMigration.toLocalDate(now);
   const periodId = state.currentPeriod.key;
   const allocations = getAllocations();
@@ -76,6 +77,78 @@ async function persistAndRender() {
     showPersistenceError(error);
   }
 }
+
+async function processPendingNativeExpense() {
+  if (!state || processingNativeExpense) return;
+  const serialized = sessionStorage.getItem('pendingNativeExpense');
+  if (!serialized) return;
+
+  let expense;
+  try {
+    expense = JSON.parse(serialized);
+  } catch (error) {
+    sessionStorage.removeItem('pendingNativeExpense');
+    showNotice('No se pudo leer la compra detectada. No se guardó ningún gasto.', 'alert danger');
+    return;
+  }
+
+  const occurredAt = new Date(expense.occurredAt);
+  if (!/^[a-f0-9]{64}$/.test(expense.captureId || '') ||
+      !Number.isSafeInteger(expense.amount) || expense.amount <= 0 ||
+      !Number.isFinite(occurredAt.getTime()) ||
+      typeof expense.description !== 'string' || !expense.description.trim() ||
+      typeof expense.source !== 'string' || !expense.source.trim()) {
+    sessionStorage.removeItem('pendingNativeExpense');
+    showNotice('La compra detectada tenía datos incompletos y no se guardó.', 'alert danger');
+    return;
+  }
+
+  processingNativeExpense = true;
+  try {
+    const cp = state.currentPeriod;
+    normalizePeriod(cp);
+    const id = `android:${expense.captureId}`;
+    if (cp.expenses.some(item => item.id === id)) {
+      await saveState();
+      sessionStorage.removeItem('pendingNativeExpense');
+      return;
+    }
+
+    const bucket = 'libre';
+    const category = 'Gastos hormiga';
+    cp.expenses.push({
+      id,
+      bucket,
+      amount: expense.amount,
+      note: expense.description.trim().slice(0, 200),
+      category,
+      source: expense.source.trim().slice(0, 60),
+      ...transactionDateFields(bucket, occurredAt)
+    });
+    cp.spent[bucket] += expense.amount;
+    await saveState();
+    sessionStorage.removeItem('pendingNativeExpense');
+    render();
+    showNotice(`Compra de ${expense.source.trim()} guardada. Puedes cambiar su categoría desde el movimiento.`);
+  } catch (error) {
+    showPersistenceError(error);
+  } finally {
+    processingNativeExpense = false;
+  }
+}
+
+window.receiveNativeExpense = function(serialized) {
+  if (typeof serialized !== 'string' || serialized.length > 2000) return false;
+  try {
+    JSON.parse(serialized);
+    sessionStorage.setItem('pendingNativeExpense', serialized);
+    processPendingNativeExpense();
+    return true;
+  } catch (error) {
+    showNotice(`No se pudo preparar la compra detectada: ${error.message}`, 'alert danger');
+    return false;
+  }
+};
 
 function fmt(n){ return Number(n||0).toLocaleString('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}); }
 function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
@@ -409,6 +482,7 @@ function bindSetup(){
       archiveIfNeeded(computePeriod(new Date(), state.payDay, state.payFrequency));
       currentTab = 'dashboard';
       await persistAndRender();
+      await processPendingNativeExpense();
     });
   }
 
@@ -467,7 +541,7 @@ function renderDashboard(period){
 
   const movesHtml = (cp.expenses && cp.expenses.length) ? cp.expenses.slice().reverse().map(e => `
     <li>
-      <span>${e.note ? escapeHtml(e.note) : escapeHtml(e.category)}<span class="tag">${escapeHtml(e.category)}</span><small>${escapeHtml(transactionDateLabel(e))}</small></span>
+      <span>${e.note ? escapeHtml(e.note) : escapeHtml(e.category)}<span class="tag">${escapeHtml(e.category)}</span>${e.source ? `<span class="tag">${escapeHtml(e.source)}</span>` : ''}<small>${escapeHtml(transactionDateLabel(e))}</small></span>
       <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button type="button" class="del" data-id="${escapeHtml(e.id)}" aria-label="Eliminar gasto de ${escapeHtml(e.category || 'este período')}">✕</button></span>
     </li>
   `).join('') : '<div class="empty">Sin movimientos todavía en este período.</div>';
@@ -1045,6 +1119,7 @@ async function initApp() {
       if (archiveIfNeeded(period)) await saveState();
     }
     render();
+    await processPendingNativeExpense();
     const notice = await FinanceDB.getMigrationNotice();
     showNotice(notice);
   } catch (error) {

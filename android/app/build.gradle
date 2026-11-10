@@ -1,0 +1,16 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.darksound186.asistentefinanciero"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.darksound186.asistentefinanciero"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+    }
+}

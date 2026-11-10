@@ -124,6 +124,7 @@
       categoryId: category,
       categoryLabel: category,
       note: record.note || '',
+      source: record.source || null,
       budgetRef: {
         periodId: period?.id || null,
         bucket,
@@ -181,6 +182,7 @@
         id: record.legacyId || original.id,
         amount: record.amountCop ?? original.amount,
         note: record.note ?? original.note,
+        source: record.source ?? original.source ?? null,
         category: record.categoryLabel ?? original.category,
         bucket: record.bucket ?? original.bucket,
         occurredAt: record.occurredAt,
@@ -198,6 +200,7 @@
       id: record.legacyId || record.id,
       amount: record.amountCop,
       note: record.note,
+      source: record.source || null,
       category: record.categoryLabel,
       bucket: record.bucket,
       occurredAt: record.occurredAt,
