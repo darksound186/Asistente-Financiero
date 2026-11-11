@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#101114">
   <meta name="description" content="Control financiero personal privado y local-first.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://generativelanguage.googleapis.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
@@ -38,27 +38,31 @@
   <!-- Navegación Inferior para Móviles -->
   <nav class="mobile-nav" id="mobileNav" aria-label="Navegación principal">
     <button type="button" class="mobile-nav-item active" data-mobile-tab="dashboard" aria-label="Inicio" aria-current="page">
-      <span class="nav-icon">🏠</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span>
       <span class="nav-label">Inicio</span>
     </button>
     <button type="button" class="mobile-nav-item" data-mobile-tab="extra" aria-label="Dinero sin asignar">
-      <span class="nav-icon">💰</span>
-      <span class="nav-label">Sin Asignar</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M16 15h2M7 6V4h11"/></svg></span>
+      <span class="nav-label">Libre</span>
     </button>
     <button type="button" class="mobile-nav-item nav-action-btn" id="quickExpense" aria-label="Registrar gasto">
-      <span class="nav-icon">➕</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg></span>
       <span class="nav-label">Registrar</span>
     </button>
-    <button type="button" class="mobile-nav-item" data-mobile-tab="assistant" aria-label="Asistente">
-      <span class="nav-icon">🤖</span>
-      <span class="nav-label">Asistente</span>
+    <button type="button" class="mobile-nav-item" data-mobile-tab="goals" aria-label="Metas">
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span>
+      <span class="nav-label">Metas</span>
     </button>
     <button type="button" class="mobile-nav-item" data-mobile-tab="loans" aria-label="Préstamos">
-      <span class="nav-icon">🤝</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 7h13l-3-3M17 17H4l3 3M20 7l-4 4M4 17l4-4"/></svg></span>
       <span class="nav-label">Préstamos</span>
     </button>
+    <button type="button" class="mobile-nav-item" data-mobile-tab="assistant" aria-label="Asistente">
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7l-5 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/><path d="M8 11h.01M12 11h.01M16 11h.01"/></svg></span>
+      <span class="nav-label">Asistente</span>
+    </button>
     <button type="button" class="mobile-nav-item" data-mobile-tab="settings" aria-label="Ajustes">
-      <span class="nav-icon">⚙️</span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.7 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.7-1l-1.7.7-1.4-2.4 1.4-1.1a7 7 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.7-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.7 1l1.7-.7 1.4 2.4-1.4 1.1a7 7 0 0 1 0 2Z" transform="translate(-1 -1) scale(1.08)"/></svg></span>
       <span class="nav-label">Ajustes</span>
     </button>
   </nav>

@@ -29,6 +29,11 @@ import java.util.regex.Pattern;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATIONS = 3101;
+    private static final int BACKGROUND = Color.rgb(16, 17, 20);
+    private static final int SURFACE = Color.rgb(25, 27, 32);
+    private static final int TEXT = Color.rgb(245, 245, 245);
+    private static final int MUTED = Color.rgb(146, 149, 158);
+    private static final int ACCENT = Color.rgb(139, 207, 173);
     private static final long MAX_AMOUNT = 100_000_000L;
     private static final Pattern CAPTURE_ID = Pattern.compile("^[a-f0-9]{64}$");
     private static final String APP_URL = "https://darksound186.github.io/Asistente-Financiero/";
@@ -42,6 +47,8 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setStatusBarColor(BACKGROUND);
+        getWindow().setNavigationBarColor(BACKGROUND);
         pendingExpense = expenseFromIntent(getIntent());
         buildScreen();
         if (webView != null) {
@@ -74,16 +81,17 @@ public final class MainActivity extends Activity {
     private void buildScreen() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(BACKGROUND);
 
         LinearLayout controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.VERTICAL);
+        controls.setBackgroundColor(SURFACE);
         controls.setPadding(dp(16), dp(12), dp(16), dp(8));
 
         TextView title = new TextView(this);
         title.setText("Detección de compras");
         title.setTextSize(20);
-        title.setTextColor(Color.rgb(15, 23, 42));
+        title.setTextColor(TEXT);
         controls.addView(title);
 
         status = new TextView(this);
@@ -99,11 +107,13 @@ public final class MainActivity extends Activity {
         TextView providerTitle = new TextView(this);
         providerTitle.setText("Apps que pueden generar avisos");
         providerTitle.setTextSize(14);
+        providerTitle.setTextColor(TEXT);
         providerTitle.setPadding(0, dp(6), 0, 0);
         controls.addView(providerTitle);
         for (String provider : PROVIDERS) {
             CheckBox checkBox = new CheckBox(this);
             checkBox.setText(provider);
+            checkBox.setTextColor(TEXT);
             checkBox.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(providerKey(provider), true));
             checkBox.setOnCheckedChangeListener((button, checked) ->
                     getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(providerKey(provider), checked).apply());
@@ -113,6 +123,7 @@ public final class MainActivity extends Activity {
         TextView privacy = new TextView(this);
         privacy.setText("Solo se revisan avisos de estas apps que parezcan compras. No se leen mensajes ni se guardan notificaciones ajenas.");
         privacy.setTextSize(12);
+        privacy.setTextColor(MUTED);
         privacy.setPadding(0, dp(4), 0, dp(4));
         controls.addView(privacy);
         root.addView(controls, new LinearLayout.LayoutParams(
@@ -175,9 +186,11 @@ public final class MainActivity extends Activity {
 
     private void updateStatus() {
         if (status == null) return;
-        status.setText(hasNotificationAccess()
+        boolean enabled = hasNotificationAccess();
+        status.setText(enabled
                 ? "Detección activa. Es posible que debas habilitar también las notificaciones de Billetera."
                 : "Detección inactiva: autoriza el acceso especial de notificaciones de Android.");
+        status.setTextColor(enabled ? ACCENT : MUTED);
     }
 
     private void deliverPendingExpense() {
