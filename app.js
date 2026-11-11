@@ -2,6 +2,10 @@ let state = null;
 let currentTab = 'dashboard';
 let sessionGeminiKey = '';
 let processingNativeExpense = false;
+const NOTICE_DURATION = 5000;
+let activeNotice = null;
+let noticeTimer = null;
+let noticeTimerVersion = 0;
 
 const CATS = {
   fijos: ['Plan celular','Mercado','Deudas','Gasolina/moto','Servicios','Arriendo','Salud','Educación','Otro fijo'],
@@ -18,6 +22,7 @@ async function loadState(){
 
 async function saveState(){
   await FinanceDB.saveState(state);
+  clearPersistenceError();
 }
 
 function showPersistenceError(error) {
@@ -29,19 +34,70 @@ function showPersistenceError(error) {
     notice.id = 'persistenceError';
     notice.className = 'alert danger';
     notice.setAttribute('role', 'alert');
+    const message = document.createElement('span');
+    message.className = 'notice-message';
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'notice-dismiss';
+    closeButton.setAttribute('aria-label', 'Cerrar aviso de guardado');
+    closeButton.textContent = '×';
+    closeButton.addEventListener('click', () => notice.remove());
+    notice.append(message, closeButton);
     app.prepend(notice);
   }
-  notice.textContent = `No se pudieron guardar tus cambios: ${error.message}`;
+  notice.children[0].textContent = `No se pudieron guardar tus cambios: ${error.message}`;
+}
+
+function clearPersistenceError() {
+  document.getElementById('persistenceError')?.remove();
+}
+
+function dismissNotice(notice) {
+  if (!notice || notice !== activeNotice) return;
+  if (noticeTimer !== null) clearTimeout(noticeTimer);
+  noticeTimerVersion += 1;
+  noticeTimer = null;
+  activeNotice = null;
+  notice.remove();
+}
+
+function scheduleNoticeDismissal(notice) {
+  if (noticeTimer !== null) clearTimeout(noticeTimer);
+  const timerVersion = ++noticeTimerVersion;
+  noticeTimer = setTimeout(() => {
+    if (timerVersion === noticeTimerVersion) dismissNotice(notice);
+  }, NOTICE_DURATION);
 }
 
 function showNotice(message, className = 'alert warn') {
   const app = document.getElementById('app');
-  if (!app || !message) return;
+  if (!app || typeof message !== 'string' || !message.trim()) return;
+  if (activeNotice && activeNotice.parentNode === app &&
+      activeNotice.dataset.noticeMessage === message &&
+      activeNotice.dataset.noticeClass === className) {
+    scheduleNoticeDismissal(activeNotice);
+    return;
+  }
+  if (activeNotice) dismissNotice(activeNotice);
   const notice = document.createElement('div');
-  notice.className = className;
-  notice.setAttribute('role', 'status');
-  notice.textContent = message;
+  notice.className = `${className} transient-notice`;
+  notice.dataset.noticeMessage = message;
+  notice.dataset.noticeClass = className;
+  notice.setAttribute('role', className.includes('danger') ? 'alert' : 'status');
+  notice.setAttribute('aria-live', className.includes('danger') ? 'assertive' : 'polite');
+  const messageElement = document.createElement('span');
+  messageElement.className = 'notice-message';
+  messageElement.textContent = message;
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'notice-dismiss';
+  closeButton.setAttribute('aria-label', 'Cerrar aviso');
+  closeButton.textContent = '×';
+  closeButton.addEventListener('click', () => dismissNotice(notice));
+  notice.append(messageElement, closeButton);
   app.prepend(notice);
+  activeNotice = notice;
+  scheduleNoticeDismissal(notice);
 }
 
 function transactionDateFields(bucket, occurredAt = new Date()) {
@@ -301,9 +357,11 @@ window.abrirModalGastoRapido = function() {
 function render(){
   const app = document.getElementById('app');
   const loading = document.getElementById('loading');
+  const mobileNav = document.getElementById('mobileNav');
   
   if(loading) loading.style.display = 'none';
   if(app) app.style.display = 'block';
+  if(mobileNav) mobileNav.hidden = !state;
 
   if(!state){ if(app) app.innerHTML = renderSetup(null); bindSetup(); return; }
   if(!state.loans) state.loans = [];
@@ -549,7 +607,7 @@ function renderDashboard(period){
   const incomesHtml = (cp.incomes && cp.incomes.length) ? cp.incomes.slice().reverse().map(i => `
     <li>
       <span>${i.note ? escapeHtml(i.note) : 'Ingreso Diario'}<small>${escapeHtml(transactionDateLabel(i))}</small></span>
-      <span style="display:flex;align-items:center;gap:8px;color:#2e7d32;"><b>+${fmt(i.amount)}</b><button type="button" class="del" data-inc-id="${escapeHtml(i.id)}" aria-label="Eliminar ingreso">✕</button></span>
+      <span class="income-value" style="display:flex;align-items:center;gap:8px;"><b>+${fmt(i.amount)}</b><button type="button" class="del" data-inc-id="${escapeHtml(i.id)}" aria-label="Eliminar ingreso">✕</button></span>
     </li>
   `).join('') : '<div class="empty">No hay ingresos registrados todavía.</div>';
 
@@ -584,7 +642,7 @@ function renderDashboard(period){
         </form>
         <div class="err" id="incErr"></div>
         
-        <h3 style="margin-top:16px; font-size: 0.95rem; color:#555;">Ingresos sumados este mes:</h3>
+        <h3 style="margin-top:16px; font-size: 0.95rem;">Ingresos sumados este mes:</h3>
         <ul class="moves" style="margin-top:8px;">${incomesHtml}</ul>
       </div>
     `;
@@ -617,7 +675,7 @@ function renderDashboard(period){
         </form>
         <div class="err" id="incErr"></div>
 
-        <h3 style="margin-top:16px; font-size: 0.95rem; color:#555;">Ingresos extra este período:</h3>
+        <h3 style="margin-top:16px; font-size: 0.95rem;">Ingresos extra este período:</h3>
         <ul class="moves" style="margin-top:8px;">${incomesHtml}</ul>
       </div>
     `;
@@ -775,7 +833,7 @@ function renderExtra(period){
         <button type="submit">Agregar</button>
       </form>
       
-      <h3 style="margin-top:20px; font-size: 0.95rem; color:#555;">Historial de desembolsos libres:</h3>
+      <h3 style="margin-top:20px; font-size: 0.95rem;">Historial de desembolsos libres:</h3>
       <ul class="moves" style="margin-top:8px;">${extraMovesHtml}</ul>
     </div>
   `;
@@ -1001,10 +1059,10 @@ function renderGoals(){
           <b style="font-size: 1.1rem;">🎯 ${escapeHtml(g.name)}</b>
           <button type="button" class="del" data-goal-del="${escapeHtml(g.id)}" aria-label="Eliminar meta ${escapeHtml(g.name)}">✕</button>
         </div>
-        <div style="font-size: 0.9rem; color: #666; margin-bottom: 6px;">
+        <div class="goal-details" style="font-size: 0.9rem; margin-bottom: 6px;">
           Ahorrado: <b>${fmt(g.saved)}</b> de <b>${fmt(g.target)}</b> (${pct}%)
         </div>
-        <div class="bar" style="margin-bottom: 12px;"><div class="bar-fill goal-fill" style="width:${pct}%; background: linear-gradient(90deg, #4caf50, #2e7d32);"></div></div>
+        <div class="bar" style="margin-bottom: 12px;"><div class="bar-fill goal-fill" style="width:${pct}%;"></div></div>
         <form class="goal-add-form expense-form" data-goal-id="${escapeHtml(g.id)}">
             <label class="sr-only" for="addSaved_${escapeHtml(g.id)}">Abono para ${escapeHtml(g.name)}</label>
             <input type="number" id="addSaved_${escapeHtml(g.id)}" min="1" step="1" placeholder="Abonar monto" required>
@@ -1091,7 +1149,9 @@ function escapeHtml(str) {
 function showStartupError(error) {
   const loading = document.getElementById('loading');
   const app = document.getElementById('app');
+  const mobileNav = document.getElementById('mobileNav');
   if (loading) loading.style.display = 'none';
+  if (mobileNav) mobileNav.hidden = true;
   if (!app) return;
   app.classList.remove('hidden');
   app.style.display = 'block';

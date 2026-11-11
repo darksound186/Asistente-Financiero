@@ -6,7 +6,12 @@ on:
       - main
     paths:
       - "app.js"
+      - "index.html"
+      - "manifest.webmanifest"
+      - "migration.js"
       - "storage.js"
+      - "styles.css"
+      - "sw.js"
       - "tests/**"
       - "android/**"
       - ".github/workflows/android-debug.yml"
@@ -15,7 +20,12 @@ on:
       - main
     paths:
       - "app.js"
+      - "index.html"
+      - "manifest.webmanifest"
+      - "migration.js"
       - "storage.js"
+      - "styles.css"
+      - "sw.js"
       - "tests/**"
       - "android/**"
       - ".github/workflows/android-debug.yml"

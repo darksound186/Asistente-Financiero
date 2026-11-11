@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'asistente-financiero-';
-const CACHE_NAME = `${CACHE_PREFIX}shell-v1`;
+const CACHE_NAME = `${CACHE_PREFIX}shell-v2`;
 const APP_SHELL = [
   './',
   './index.html',
