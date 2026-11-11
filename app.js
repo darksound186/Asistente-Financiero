@@ -6,6 +6,9 @@ const NOTICE_DURATION = 5000;
 let activeNotice = null;
 let noticeTimer = null;
 let noticeTimerVersion = 0;
+const archiveMovementCache = new Map();
+let archivedPeriodsCache = null;
+let archivedPeriodLoadPromise = null;
 
 const CATS = {
   fijos: ['Plan celular','Mercado','Deudas','Gasolina/moto','Servicios','Arriendo','Salud','Educación','Otro fijo'],
@@ -18,6 +21,9 @@ function getGeminiKey() {
 
 async function loadState(){
   state = await FinanceDB.loadState();
+  archiveMovementCache.clear();
+  archivedPeriodsCache = null;
+  archivedPeriodLoadPromise = null;
 }
 
 async function saveState(){
@@ -215,6 +221,271 @@ function transactionDateLabel(item){
   return 'Fecha por confirmar';
 }
 
+function validMovementAmount(item) {
+  const amount = item.amountCop ?? item.amount;
+  return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
+}
+
+function movementTimestamp(item) {
+  const exact = Date.parse(item.occurredAt || '');
+  if (!Number.isNaN(exact)) return exact;
+  const localDate = Date.parse(item.occurredOnLocal || '');
+  return Number.isNaN(localDate) ? 0 : localDate;
+}
+
+function formatKnownAmount(amount) {
+  return Number.isSafeInteger(amount) && amount >= 0 ? fmt(amount) : 'Dato no disponible';
+}
+
+function makeMovement(item, periodId, periodLabel, type = item.type, bucketOverride = null) {
+  const bucket = bucketOverride || item.bucket || null;
+  const rawCategory = item.categoryLabel || item.category || item.categoryId;
+  const bucketCategory = bucket === 'fijos' ? 'Obligaciones'
+    : bucket === 'libre' ? 'Gasto libre'
+      : bucket === 'extra' ? 'Dinero libre'
+        : '';
+  const category = rawCategory ? String(rawCategory) : bucketCategory;
+  const normalizedType = type === 'income' || type === 'expense' ? type : 'other';
+  const typeLabel = normalizedType === 'income' ? 'Ingreso'
+    : normalizedType === 'expense' && bucket === 'extra' ? 'Gasto extraordinario'
+      : normalizedType === 'expense' && bucket === 'fijos' ? 'Gasto fijo'
+        : normalizedType === 'expense' && bucket === 'libre' ? 'Gasto libre'
+          : normalizedType === 'expense' ? 'Gasto'
+            : String(type || 'Movimiento');
+
+  return {
+    id: item.id === undefined || item.id === null ? null : String(item.id),
+    periodId: String(item.periodId || periodId || ''),
+    periodLabel,
+    type: normalizedType,
+    typeLabel,
+    bucket,
+    category: category || 'Categoría no disponible',
+    description: typeof item.note === 'string' && item.note.trim()
+      ? item.note.trim()
+      : 'Sin descripción',
+    source: typeof item.source === 'string' && item.source.trim() ? item.source.trim() : '',
+    amount: validMovementAmount(item),
+    dateLabel: transactionDateLabel(item),
+    timestamp: movementTimestamp(item)
+  };
+}
+
+function uniqueChronologicalMovements(movements) {
+  const seen = new Set();
+  return movements.filter(item => {
+    if (item.id === null) return true;
+    const key = `${item.periodId}:${item.type}:${item.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => b.timestamp - a.timestamp);
+}
+
+function getCurrentPeriodMovements(period) {
+  const cp = state.currentPeriod;
+  const movements = [
+    ...(cp.expenses || []).map(item => makeMovement(item, cp.key, period.label, 'expense')),
+    ...(cp.extraExpenses || []).map(item => makeMovement(item, cp.key, period.label, 'expense', 'extra')),
+    ...(cp.incomes || []).map(item => makeMovement(item, cp.key, period.label, 'income'))
+  ];
+  return uniqueChronologicalMovements(movements);
+}
+
+function getHistoricalMovements(records, period) {
+  const movements = records
+    .filter(record => String(record.periodId || '') === String(period.id))
+    .map(record => makeMovement(record, period.id, period.label));
+  return uniqueChronologicalMovements(movements);
+}
+
+function renderMovementItem(movement, allowDelete = false) {
+  const sign = movement.type === 'income' ? '+' : movement.type === 'expense' ? '−' : '';
+  let deleteButton = '';
+  if (allowDelete && movement.id !== null) {
+    if (movement.type === 'income') {
+      deleteButton = `<button type="button" class="del" data-inc-id="${escapeHtml(movement.id)}" aria-label="Eliminar ingreso">✕</button>`;
+    } else if (movement.type === 'expense' && movement.bucket === 'extra') {
+      deleteButton = `<button type="button" class="del" data-extra-id="${escapeHtml(movement.id)}" aria-label="Eliminar desembolso extraordinario">✕</button>`;
+    } else if (movement.type === 'expense') {
+      deleteButton = `<button type="button" class="del" data-id="${escapeHtml(movement.id)}" aria-label="Eliminar gasto">✕</button>`;
+    }
+  }
+  const amount = movement.amount === null ? 'Monto por revisar' : `${sign}${fmt(movement.amount)}`;
+  const source = movement.source ? ` · ${escapeHtml(movement.source)}` : '';
+
+  return `
+    <article class="wallet-activity-item">
+      <span class="wallet-activity-icon ${movement.type}" aria-hidden="true">${movement.type === 'income' ? '+' : movement.type === 'expense' ? '−' : '·'}</span>
+      <span class="wallet-activity-copy">
+        <strong>${escapeHtml(movement.description)}</strong>
+        <small>${escapeHtml(movement.typeLabel)} · ${escapeHtml(movement.category)} · ${escapeHtml(movement.periodLabel)} · ${escapeHtml(movement.dateLabel)}${source}</small>
+      </span>
+      <span class="wallet-activity-value"><b class="wallet-activity-amount ${movement.type}">${amount}</b>${deleteButton}</span>
+    </article>
+  `;
+}
+
+function renderMovementList(movements, emptyMessage, allowDelete = false) {
+  return movements.length
+    ? movements.map(item => renderMovementItem(item, allowDelete)).join('')
+    : `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
+}
+
+function calculateWalletSummary(period) {
+  const cp = state.currentPeriod;
+  const frequency = state.payFrequency || 'quincenal';
+  const salaryValue = Number(state.salary);
+  const configuredIncomeValid = frequency === 'independiente' ||
+    (Number.isSafeInteger(salaryValue) && salaryValue >= 0);
+  const configuredIncome = frequency === 'independiente' ? 0 : configuredIncomeValid ? salaryValue : 0;
+  const incomeAmounts = (cp.incomes || []).map(validMovementAmount);
+  const incomeItemsValid = incomeAmounts.every(amount => amount !== null);
+  const registeredIncome = (cp.incomes || []).reduce((sum, item) => {
+    const amount = validMovementAmount(item);
+    return amount === null ? sum : sum + amount;
+  }, 0);
+  const registeredIncomeValid = incomeItemsValid && Number.isSafeInteger(registeredIncome);
+  const storedSpend = cp.spent || {};
+  const spendingAggregatesValid = ['fijos', 'libre', 'extra'].every(bucket =>
+    Number.isSafeInteger(storedSpend[bucket]) && storedSpend[bucket] >= 0);
+  const fixedSpent = Number.isSafeInteger(storedSpend.fijos) ? storedSpend.fijos : 0;
+  const flexibleSpent = Number.isSafeInteger(storedSpend.libre) ? storedSpend.libre : 0;
+  const extraordinarySpent = Number.isSafeInteger(storedSpend.extra) ? storedSpend.extra : 0;
+  const estimatedIncome = configuredIncome + registeredIncome;
+  const periodExpenses = fixedSpent + flexibleSpent + extraordinarySpent;
+  const movementTotals = { fijos: 0, libre: 0, extra: 0 };
+  let movementDetailsValid = true;
+  for (const movement of getCurrentPeriodMovements(period)) {
+    if (movement.type !== 'expense') continue;
+    if (!Object.prototype.hasOwnProperty.call(movementTotals, movement.bucket) || movement.amount === null) {
+      movementDetailsValid = false;
+      continue;
+    }
+    const bucketTotal = movementTotals[movement.bucket] + movement.amount;
+    if (!Number.isSafeInteger(bucketTotal)) {
+      movementDetailsValid = false;
+      continue;
+    }
+    movementTotals[movement.bucket] = bucketTotal;
+  }
+  const aggregatesMatchMovements = movementDetailsValid &&
+    movementTotals.fijos === fixedSpent &&
+    movementTotals.libre === flexibleSpent &&
+    movementTotals.extra === extraordinarySpent;
+  const estimatedBalance = estimatedIncome - periodExpenses;
+  const dataConsistent = configuredIncomeValid && registeredIncomeValid && spendingAggregatesValid &&
+    Number.isSafeInteger(estimatedIncome) && Number.isSafeInteger(periodExpenses) &&
+    Number.isSafeInteger(estimatedBalance) && aggregatesMatchMovements;
+  const freeMoney = extraPoolTotal(period, cp) - extraordinarySpent;
+  const freeMoneyValid = dataConsistent && Number.isSafeInteger(freeMoney);
+
+  return {
+    frequency,
+    configuredIncome,
+    configuredIncomeValid,
+    registeredIncome,
+    registeredIncomeValid,
+    estimatedIncome,
+    fixedSpent,
+    flexibleSpent,
+    extraordinarySpent,
+    periodExpenses,
+    dataConsistent,
+    estimatedBalance: dataConsistent ? estimatedBalance : null,
+    freeMoneyValid,
+    freeMoney: freeMoneyValid ? freeMoney : null
+  };
+}
+
+function archivedCycleSummaries() {
+  const currentKey = String(state.currentPeriod?.key || '');
+  const entries = new Map();
+  const order = [];
+
+  for (const summary of state.history || []) {
+    const id = String(summary.key || '');
+    if (!id || id === currentKey || entries.has(id)) continue;
+    entries.set(id, { id, status: 'closed', label: summary.label || id, summary });
+    order.push(id);
+  }
+
+  const storedPeriods = (archivedPeriodsCache || [])
+    .filter(period => period.status === 'closed' && String(period.id || '') !== currentKey)
+    .slice()
+    .sort((a, b) => String(b.id).localeCompare(String(a.id)));
+  for (const period of storedPeriods) {
+    const id = String(period.id || '');
+    if (!id) continue;
+    const existing = entries.get(id);
+    if (existing) {
+      entries.set(id, {
+        ...existing,
+        ...period,
+        id,
+        label: period.label || existing.label,
+        summary: period.summary || existing.summary
+      });
+    } else {
+      entries.set(id, { ...period, id, label: period.label || id, summary: period.summary || period });
+      order.push(id);
+    }
+  }
+
+  return order.map(id => entries.get(id));
+}
+
+function renderArchivedCycles(cycles) {
+  if (!cycles.length) return '<div class="empty">Aún no hay ciclos anteriores.</div>';
+  return cycles.map(cycle => {
+    const summary = cycle.summary || cycle;
+    const cycleExpenses = [summary.fijosSpent, summary.libreSpent, summary.extraSpent];
+    const totalCycleExpenses = cycleExpenses.every(amount => Number.isSafeInteger(amount) && amount >= 0)
+      ? cycleExpenses.reduce((sum, amount) => sum + amount, 0)
+      : null;
+    return `
+      <article class="wallet-history-cycle" data-history-cycle>
+        <details>
+          <summary>
+            <span><strong>${escapeHtml(cycle.label || 'Período archivado')}</strong><small>${escapeHtml(cycle.id)}</small></span>
+            <span class="wallet-history-totals"><span>Ingreso estimado <b>${formatKnownAmount(summary.ingresoExtra)}</b></span><span>Gastos <b>${formatKnownAmount(totalCycleExpenses)}</b></span></span>
+          </summary>
+          <div class="wallet-history-period-content">
+            <button type="button" class="wallet-text-action" data-history-period="${escapeHtml(cycle.id)}">Consultar movimientos</button>
+            <div class="wallet-history-movements" data-history-movements hidden aria-live="polite"></div>
+          </div>
+        </details>
+      </article>
+    `;
+  }).join('');
+}
+
+async function loadArchivedPeriods(container) {
+  if (!container) return;
+  if (archivedPeriodsCache) {
+    container.innerHTML = renderArchivedCycles(archivedCycleSummaries());
+    return;
+  }
+  if (archivedPeriodLoadPromise) {
+    await archivedPeriodLoadPromise;
+    container.innerHTML = renderArchivedCycles(archivedCycleSummaries());
+    return;
+  }
+
+  container.innerHTML = '<div class="empty">Cargando ciclos anteriores…</div>';
+  archivedPeriodLoadPromise = (async () => {
+    try {
+      archivedPeriodsCache = await FinanceDB.getArchivedPeriods();
+      container.innerHTML = renderArchivedCycles(archivedCycleSummaries());
+    } catch (error) {
+      container.innerHTML = `<div class="err" role="alert">No se pudieron cargar los ciclos anteriores: ${escapeHtml(error.message)}</div>`;
+    } finally {
+      archivedPeriodLoadPromise = null;
+    }
+  })();
+  await archivedPeriodLoadPromise;
+}
+
 function computePeriod(today, cutoff, frequency){
   const y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
   const lastDay = daysInMonth(y,m);
@@ -323,6 +594,10 @@ function archiveIfNeeded(period){
     }
     normalizePeriod(state.currentPeriod);
   }
+  if (changed) {
+    archivedPeriodsCache = null;
+    archivedPeriodLoadPromise = null;
+  }
   return changed;
 }
 
@@ -345,10 +620,27 @@ window.abrirModalGastoRapido = function() {
   currentTab = 'dashboard';
   render();
   setTimeout(() => {
+    const entry = document.getElementById('expenseEntry');
+    if (entry) entry.open = true;
     const expForm = document.getElementById('expForm');
     if (expForm) {
       expForm.scrollIntoView({ behavior: 'smooth' });
       const amountInput = document.getElementById('expAmount');
+      if (amountInput) amountInput.focus();
+    }
+  }, 100);
+};
+
+window.abrirModalIngresoRapido = function() {
+  currentTab = 'dashboard';
+  render();
+  setTimeout(() => {
+    const entry = document.getElementById('incomeEntry');
+    if (entry) entry.open = true;
+    const incForm = document.getElementById('incForm');
+    if (incForm) {
+      incForm.scrollIntoView({ behavior: 'smooth' });
+      const amountInput = document.getElementById('incAmount');
       if (amountInput) amountInput.focus();
     }
   }, 100);
@@ -581,155 +873,181 @@ function bindSetup(){
 function renderDashboard(period){
   const alloc = getAllocations();
   const cp = state.currentPeriod;
-  const freq = state.payFrequency || 'quincenal';
-  const totalDays = period.totalDays;
-  let ticks = '';
-  for(let i=1;i<=totalDays;i++){
-    let cls='tick';
-    if(i<period.elapsed) cls+=' filled'; else if(i===period.elapsed) cls+=' today';
-    ticks += `<div class="${cls}"></div>`;
-  }
-  const ingresoExtra = (cp.incomes||[]).reduce((s,i)=>s+i.amount,0);
-  const ingresoTotal = (freq === 'independiente' ? 0 : state.salary) + ingresoExtra;
-
+  const summary = calculateWalletSummary(period);
+  const cycleProgress = Math.min(100, Math.max(0, Math.round((period.elapsed / Math.max(1, period.totalDays)) * 100)));
   const fijosPct = Math.round((cp.spent.fijos/Math.max(1,alloc.fijos))*100);
   const librePct = Math.round((cp.spent.libre/Math.max(1,alloc.libre))*100);
-
   const catOptionsLibre = CATS.libre.map(c=>`<option value="${c}">${c}</option>`).join('');
+  const currentMovements = getCurrentPeriodMovements(period);
+  const recentMovesHtml = renderMovementList(currentMovements.slice(0, 5), 'Aún no hay movimientos registrados en este ciclo.');
+  const currentHistoryHtml = renderMovementList(currentMovements, 'Aún no hay movimientos registrados en este ciclo.', true);
+  const archivedCycles = archivedCycleSummaries();
+  const archivedCyclesHtml = renderArchivedCycles(archivedCycles);
+  const balanceValue = summary.dataConsistent ? fmt(summary.estimatedBalance) : 'Revisar registros';
+  const freeMoneyValue = !summary.dataConsistent
+    ? 'Revisar registros'
+    : summary.freeMoneyValid ? fmt(summary.freeMoney) : 'Revisar compromisos';
+  const registeredIncomeValue = summary.registeredIncomeValid ? fmt(summary.registeredIncome) : 'Revisar ingresos';
+  const configuredIncomeValue = summary.frequency === 'independiente'
+    ? 'No aplica'
+    : summary.configuredIncomeValid ? fmt(summary.configuredIncome) : 'Revisar configuración';
 
-  const movesHtml = (cp.expenses && cp.expenses.length) ? cp.expenses.slice().reverse().map(e => `
-    <li>
-      <span>${e.note ? escapeHtml(e.note) : escapeHtml(e.category)}<span class="tag">${escapeHtml(e.category)}</span>${e.source ? `<span class="tag">${escapeHtml(e.source)}</span>` : ''}<small>${escapeHtml(transactionDateLabel(e))}</small></span>
-      <span style="display:flex;align-items:center;gap:8px;"><b>${fmt(e.amount)}</b><button type="button" class="del" data-id="${escapeHtml(e.id)}" aria-label="Eliminar gasto de ${escapeHtml(e.category || 'este período')}">✕</button></span>
-    </li>
-  `).join('') : '<div class="empty">Sin movimientos todavía en este período.</div>';
+  return `
+    <section class="wallet-balance-card" aria-label="Balance estimado del ciclo">
+      <div class="wallet-card-heading">
+        <span>Balance estimado del ciclo</span>
+        <span class="wallet-cycle-label">${escapeHtml(period.label)}</span>
+      </div>
+      <strong class="wallet-balance-amount ${summary.estimatedBalance < 0 ? 'negative' : ''}">${balanceValue}</strong>
+      <p class="wallet-cycle-note">Estimación del ciclo, no saldo bancario · ${summary.frequency === 'independiente' ? 'este mes' : `${period.remaining} días para cerrar`}</p>
+      <div class="wallet-cycle-progress" role="meter" aria-label="Progreso del ciclo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${cycleProgress}">
+        <span style="width:${cycleProgress}%"></span>
+      </div>
+      <div class="wallet-cycle-progress-label"><span>Día ${period.elapsed} de ${period.totalDays}</span><span>Base configurada, no confirmada</span></div>
+      <div class="wallet-balance-breakdown">
+        <div><span>Base configurada, no confirmada</span><b>${configuredIncomeValue}</b></div>
+        <div><span>Ingresos registrados</span><b>${registeredIncomeValue}</b></div>
+        <div><span>Gastos del período</span><b>${summary.dataConsistent ? fmt(summary.periodExpenses) : 'Revisar movimientos'}</b></div>
+      </div>
+      ${summary.dataConsistent ? '' : '<p class="wallet-balance-warning" role="status">Los movimientos y los totales guardados no coinciden. El balance no se estima hasta revisar los registros.</p>'}
+    </section>
 
-  const incomesHtml = (cp.incomes && cp.incomes.length) ? cp.incomes.slice().reverse().map(i => `
-    <li>
-      <span>${i.note ? escapeHtml(i.note) : 'Ingreso Diario'}<small>${escapeHtml(transactionDateLabel(i))}</small></span>
-      <span class="income-value" style="display:flex;align-items:center;gap:8px;"><b>+${fmt(i.amount)}</b><button type="button" class="del" data-inc-id="${escapeHtml(i.id)}" aria-label="Eliminar ingreso">✕</button></span>
-    </li>
-  `).join('') : '<div class="empty">No hay ingresos registrados todavía.</div>';
+    <section class="wallet-free-card" aria-label="Dinero libre después de compromisos pendientes">
+      <div><span>Dinero libre</span><small>Después de presupuestos y préstamos pendientes</small></div>
+      <strong>${freeMoneyValue}</strong>
+    </section>
 
-  let heroCardContent = '';
-  let ingresoBarContent = '';
-  let registrarIngresoSection = '';
+    <div class="wallet-quick-actions" aria-label="Accesos rápidos">
+      <button type="button" class="wallet-quick-action expense" id="quickAddExpense">
+        <span aria-hidden="true">−</span><span>Registrar gasto</span>
+      </button>
+      <button type="button" class="wallet-quick-action income" id="quickAddIncome">
+        <span aria-hidden="true">+</span><span>Registrar ingreso</span>
+      </button>
+    </div>
 
-  if (freq === 'independiente') {
-    heroCardContent = `
-      <div class="hero-top">
-        <div>
-          <div class="hero-label">${period.label}</div>
-          <div class="days-num">${fmt(ingresoTotal)}<span>Total acumulado ganado este mes</span></div>
+    <section class="wallet-section" aria-labelledby="recentMovesTitle">
+      <div class="wallet-section-heading">
+        <h2 id="recentMovesTitle">Movimientos recientes</h2>
+        <button type="button" class="wallet-text-action" id="showHistory">Ver historial</button>
+      </div>
+      <div class="wallet-activity-list">${recentMovesHtml}</div>
+    </section>
+
+    <details class="wallet-disclosure">
+      <summary>Presupuesto del ciclo</summary>
+      <div class="buckets">
+        <div class="bucket fijos ${fijosPct>=100?'over':''}">
+          <div class="bucket-label">Obligaciones (fijos)</div>
+          <div class="bucket-amt">${fmt(alloc.fijos)}</div>
+          <div class="bar"><div class="bar-fill" style="width:${Math.min(100,fijosPct)}%"></div></div>
+          <div class="bucket-detail"><b>${fmt(cp.spent.fijos)}</b> gastado · ${fmt(Math.max(0,alloc.fijos-cp.spent.fijos))} disponible</div>
+        </div>
+        <div class="bucket libre ${librePct>=100?'over':''}">
+          <div class="bucket-label">Gasto libre</div>
+          <div class="bucket-amt">${fmt(alloc.libre)}</div>
+          <div class="bar"><div class="bar-fill" style="width:${Math.min(100,librePct)}%"></div></div>
+          <div class="bucket-detail"><b>${fmt(cp.spent.libre)}</b> gastado · ${fmt(Math.max(0,alloc.libre-cp.spent.libre))} disponible</div>
         </div>
       </div>
-    `;
-    ingresoBarContent = `
-      <div class="incomebar">
-        <span>Ingreso acumulado del mes</span>
-        <b>${fmt(ingresoTotal)}</b>
-      </div>
-    `;
-    registrarIngresoSection = `
-      <div class="panel" style="margin-bottom: 16px;">
-        <h2>💵 Registrar Ingreso Diario</h2>
-        <form id="incForm" class="expense-form">
-          <label class="sr-only" for="incAmount">Monto ganado hoy</label>
-          <input type="number" id="incAmount" min="1" step="1" placeholder="Monto ganado hoy" required>
-          <label class="sr-only" for="incNote">Concepto del ingreso</label>
-          <input type="text" id="incNote" placeholder="Concepto (ej. Trabajo, cliente...)">
-          <button type="submit">Agregar Ingreso</button>
-        </form>
-        <div class="err" id="incErr"></div>
-        
-        <h3 style="margin-top:16px; font-size: 0.95rem;">Ingresos sumados este mes:</h3>
-        <ul class="moves" style="margin-top:8px;">${incomesHtml}</ul>
-      </div>
-    `;
-  } else {
-    heroCardContent = `
-      <div class="hero-top">
-        <div>
-          <div class="hero-label">${period.label}</div>
-          <div class="days-num">${period.remaining}<span>días para cierre de ciclo</span></div>
-        </div>
-      </div>
-      <div class="timeline">${ticks}<div class="coin">$</div></div>
-      <div class="timeline-caption"><span>Día ${period.elapsed} de ${totalDays}</span><span>Base: ${fmt(state.salary)}</span></div>
-    `;
-    ingresoBarContent = `
-      <div class="incomebar">
-        <span>Ingreso disponible este período</span>
-        <b>${fmt(ingresoTotal)}</b>
-      </div>
-    `;
-    registrarIngresoSection = `
-      <div class="panel" style="margin-bottom: 16px;">
-        <h2>💵 Registrar ingreso extra</h2>
+    </details>
+
+    <details class="wallet-disclosure" id="incomeEntry">
+      <summary>Registrar ingreso</summary>
+      <div class="wallet-disclosure-content">
+        <h2>${summary.frequency === 'independiente' ? 'Ingreso diario' : 'Ingreso extra'}</h2>
         <form id="incForm" class="expense-form">
           <label class="sr-only" for="incAmount">Monto del ingreso</label>
           <input type="number" id="incAmount" min="1" step="1" placeholder="Monto" required>
           <label class="sr-only" for="incNote">Concepto del ingreso</label>
           <input type="text" id="incNote" placeholder="Concepto (ej. Bono, venta...)">
-          <button type="submit">Agregar Ingreso</button>
+          <button type="submit">Agregar ingreso</button>
         </form>
         <div class="err" id="incErr"></div>
-
-        <h3 style="margin-top:16px; font-size: 0.95rem;">Ingresos extra este período:</h3>
-        <ul class="moves" style="margin-top:8px;">${incomesHtml}</ul>
       </div>
-    `;
-  }
+    </details>
 
-  return `
-    <div class="hero">
-      ${heroCardContent}
-    </div>
-
-    ${ingresoBarContent}
-
-    ${registrarIngresoSection}
-
-    <div class="buckets">
-      <div class="bucket fijos ${fijosPct>=100?'over':''}">
-        <div class="bucket-label">Obligaciones (fijos)</div>
-        <div class="bucket-amt">${fmt(alloc.fijos)}</div>
-        <div class="bar"><div class="bar-fill" style="width:${Math.min(100,fijosPct)}%"></div></div>
-        <div class="bucket-detail"><b>${fmt(cp.spent.fijos)}</b> gastado · ${fmt(Math.max(0,alloc.fijos-cp.spent.fijos))} disponible</div>
+    <details class="wallet-disclosure" id="expenseEntry">
+      <summary>Registrar gasto</summary>
+      <div class="wallet-disclosure-content">
+        <h2>Nuevo gasto</h2>
+        <form id="expForm" class="expense-form">
+          <label class="sr-only" for="expBucket">Presupuesto</label>
+          <select id="expBucket">
+            <option value="fijos">Obligaciones</option>
+            <option value="libre" selected>Gasto libre</option>
+          </select>
+          <label class="sr-only" for="expCategory">Categoría del gasto</label>
+          <select id="expCategory">${catOptionsLibre}</select>
+          <label class="sr-only" for="expAmount">Monto del gasto</label>
+          <input type="number" id="expAmount" min="1" step="1" placeholder="Monto" required>
+          <label class="sr-only" for="expNote">Nota del gasto</label>
+          <input type="text" id="expNote" placeholder="Nota (opcional)">
+          <button type="submit">Agregar</button>
+        </form>
+        <div class="err" id="expErr" role="alert" aria-live="polite"></div>
       </div>
-      <div class="bucket libre ${librePct>=100?'over':''}">
-        <div class="bucket-label">Gasto libre</div>
-        <div class="bucket-amt">${fmt(alloc.libre)}</div>
-        <div class="bar"><div class="bar-fill" style="width:${Math.min(100,librePct)}%"></div></div>
-        <div class="bucket-detail"><b>${fmt(cp.spent.libre)}</b> gastado · ${fmt(Math.max(0,alloc.libre-cp.spent.libre))} disponible</div>
-      </div>
-    </div>
+    </details>
 
-    <div class="panel">
-      <h2>Registrar un gasto</h2>
-      <form id="expForm" class="expense-form">
-        <label class="sr-only" for="expBucket">Presupuesto</label>
-        <select id="expBucket">
-          <option value="fijos">Obligaciones</option>
-          <option value="libre" selected>Gasto libre</option>
-        </select>
-        <label class="sr-only" for="expCategory">Categoría del gasto</label>
-        <select id="expCategory">${catOptionsLibre}</select>
-        <label class="sr-only" for="expAmount">Monto del gasto</label>
-        <input type="number" id="expAmount" min="1" step="1" placeholder="Monto" required>
-        <label class="sr-only" for="expNote">Nota del gasto</label>
-        <input type="text" id="expNote" placeholder="Nota (opcional)">
-        <button type="submit">Agregar</button>
-      </form>
-      <div class="err" id="expErr" role="alert" aria-live="polite"></div>
-      <ul class="moves">${movesHtml}</ul>
-    </div>
+    <details class="wallet-disclosure" id="periodHistory">
+      <summary>Historial completo</summary>
+      <div class="wallet-disclosure-content">
+        <h2>Movimientos de ${escapeHtml(period.label)}</h2>
+        <div class="wallet-history-current">${currentHistoryHtml}</div>
+        <h2 class="wallet-archive-title">Resumen de ciclos anteriores</h2>
+        <p class="wallet-history-note">Selecciona un ciclo para consultar sus movimientos guardados.</p>
+        <div class="wallet-history-list" id="archivedCycleList">${archivedCyclesHtml}</div>
+      </div>
+    </details>
   `;
+}
+
+async function loadArchivedPeriodMovements(button) {
+  const periodId = button.dataset.historyPeriod;
+  const cycleContainer = button.closest('[data-history-cycle]');
+  const movementContainer = cycleContainer?.querySelector('[data-history-movements]');
+  const cycle = archivedCycleSummaries().find(item => String(item.id) === periodId);
+  if (!periodId || !movementContainer || !cycle) return;
+
+  button.disabled = true;
+  button.textContent = 'Cargando…';
+  movementContainer.hidden = false;
+  try {
+    let records = archiveMovementCache.get(periodId);
+    if (!records) {
+      records = await FinanceDB.getTransactionsByPeriod(periodId);
+      archiveMovementCache.set(periodId, records);
+    }
+    const movements = getHistoricalMovements(records, { id: periodId, label: cycle.label || periodId });
+    movementContainer.innerHTML = movements.length
+      ? renderMovementList(movements, '')
+      : '<p class="wallet-history-note">No hay movimientos individuales guardados para este ciclo; solo se conserva el resumen.</p>';
+    button.hidden = true;
+  } catch (error) {
+    movementContainer.innerHTML = `<p class="err" role="alert">No se pudieron cargar los movimientos: ${escapeHtml(error.message)}</p>`;
+    button.disabled = false;
+    button.textContent = 'Reintentar';
+  }
 }
 
 function bindDashboard(){
   const bucketSel = document.getElementById('expBucket');
   const catSel = document.getElementById('expCategory');
+
+  document.getElementById('quickAddExpense')?.addEventListener('click', window.abrirModalGastoRapido);
+  document.getElementById('quickAddIncome')?.addEventListener('click', window.abrirModalIngresoRapido);
+  const historyDetails = document.getElementById('periodHistory');
+  const archiveList = document.getElementById('archivedCycleList');
+  historyDetails?.addEventListener('toggle', () => {
+    if (historyDetails.open) void loadArchivedPeriods(archiveList);
+  });
+  document.getElementById('showHistory')?.addEventListener('click', () => {
+    if (historyDetails) {
+      historyDetails.open = true;
+      historyDetails.scrollIntoView({ behavior: 'smooth' });
+      void loadArchivedPeriods(archiveList);
+    }
+  });
   
   if(bucketSel && catSel) {
     bucketSel.addEventListener('change', ()=>{
@@ -779,12 +1097,30 @@ function bindDashboard(){
   const tc = document.getElementById('tabContent');
   if(tc) {
     tc.addEventListener('click', async (e) => {
+      const historyButton = e.target.closest('[data-history-period]');
+      if (historyButton) {
+        await loadArchivedPeriodMovements(historyButton);
+        return;
+      }
+
       const btnInc = e.target.closest('.del[data-inc-id]');
       if (btnInc) {
         const id = btnInc.getAttribute('data-inc-id');
         const idx = (state.currentPeriod.incomes||[]).findIndex(i=>i.id===id);
         if(idx > -1){
           state.currentPeriod.incomes.splice(idx,1);
+          await persistAndRender();
+        }
+        return;
+      }
+
+      const btnExtra = e.target.closest('.del[data-extra-id]');
+      if (btnExtra) {
+        const id = btnExtra.getAttribute('data-extra-id');
+        const idx = state.currentPeriod.extraExpenses.findIndex(item => item.id === id);
+        if (idx > -1) {
+          state.currentPeriod.spent.extra -= state.currentPeriod.extraExpenses[idx].amount;
+          state.currentPeriod.extraExpenses.splice(idx, 1);
           await persistAndRender();
         }
         return;
@@ -1200,6 +1536,7 @@ function bindMobileNavigation() {
     button.addEventListener('click', () => window.switchMobileTab(button.dataset.mobileTab));
   });
   document.getElementById('quickExpense')?.addEventListener('click', window.abrirModalGastoRapido);
+  document.getElementById('openSettings')?.addEventListener('click', () => window.switchMobileTab('settings'));
 }
 
 if (document.readyState === 'loading') {

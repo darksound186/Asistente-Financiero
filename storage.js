@@ -361,6 +361,40 @@
     }
   }
 
+  async function getTransactionsByPeriod(periodId) {
+    if (typeof periodId !== 'string' || !periodId.trim()) {
+      throw new Error('El identificador del período no es válido.');
+    }
+
+    const db = await openDatabase();
+    try {
+      const transaction = db.transaction('transactions', 'readonly');
+      const done = transactionDone(transaction);
+      const recordsRequest = requestResult(
+        transaction.objectStore('transactions').index('periodId').getAll(IDBKeyRange.only(periodId))
+      );
+      const records = await recordsRequest;
+      await done;
+      return records;
+    } finally {
+      db.close();
+    }
+  }
+
+  async function getArchivedPeriods() {
+    const db = await openDatabase();
+    try {
+      const transaction = db.transaction('periods', 'readonly');
+      const done = transactionDone(transaction);
+      const request = requestResult(transaction.objectStore('periods').getAll());
+      const periods = await request;
+      await done;
+      return periods.filter(period => period.status === 'closed');
+    } finally {
+      db.close();
+    }
+  }
+
   async function saveState(state) {
     if (!state || typeof state !== 'object') throw new Error('No hay datos válidos para guardar.');
     const db = await openDatabase();
@@ -569,5 +603,15 @@
     downloadJson({ format: 'asistente-financiero-legacy', version: 1, raw }, 'asistente-financiero-respaldo-legacy.json');
   }
 
-  window.FinanceDB = { loadState, saveState, getMigrationNotice, downloadLegacyBackup, exportBackup, importBackup, downloadJson };
+  window.FinanceDB = {
+    loadState,
+    getTransactionsByPeriod,
+    getArchivedPeriods,
+    saveState,
+    getMigrationNotice,
+    downloadLegacyBackup,
+    exportBackup,
+    importBackup,
+    downloadJson
+  };
 })();

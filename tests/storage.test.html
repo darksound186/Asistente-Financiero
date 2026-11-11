@@ -105,7 +105,7 @@
       const registration = await navigator.serviceWorker.register('../sw.js', { scope: '../' });
       await navigator.serviceWorker.ready;
       assert(await caches.has(unrelatedCache), 'El Service Worker eliminó una caché ajena.');
-      assert(await caches.has('asistente-financiero-shell-v2'), 'No se instaló la caché del shell.');
+      assert(await caches.has('asistente-financiero-shell-v3'), 'No se instaló la caché del shell.');
       await caches.delete(unrelatedCache);
 
       output.textContent = 'PASS: IndexedDB, migración, respaldo, restauración y caché ajena.';

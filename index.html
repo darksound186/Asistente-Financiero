@@ -22,14 +22,15 @@
     <header class="app-header">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">✦</span>
-        <span class="brand-copy"><strong>Billetera</strong><small>CONTROL FINANCIERO</small></span>
+        <span class="brand-copy"><strong>Billetera</strong><small>TU DINERO, CLARO</small></span>
       </div>
-      <div class="local-chip"><span aria-hidden="true"></span> Tus datos, siempre tuyos</div>
+      <button type="button" class="profile-settings" id="openSettings" aria-label="Abrir perfil y configuración">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0M19 5v4M17 7h4"/></svg>
+      </button>
     </header>
-    <section class="page-heading" aria-label="Resumen financiero">
-      <div class="eyebrow">Tu plata, más clara</div>
+    <section class="page-heading" aria-label="Ciclo financiero actual">
+      <div class="eyebrow">Ciclo actual</div>
       <h1 id="mainTitle">Ciclo en curso</h1>
-      <div class="sub">Organiza tus gastos, disfruta tus logros y avanza a tu ritmo.</div>
     </section>
     <div id="loading" class="loading">Cargando tus datos…</div>
     <div id="app" class="hidden"></div>
