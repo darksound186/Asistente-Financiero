@@ -599,6 +599,24 @@ test('empty movement list is explicit', () => {
   assert.match(html, /No hay movimientos del ciclo/);
 });
 
+test('native purchase detection controls appear in settings only for the Android app', () => {
+  const environment = createEnvironment();
+  const { context } = environment;
+  const settings = { userName: 'Test', salary: 1000, payDay: 30, fijosMensual: 0, variablesMensual: 0 };
+  const webHtml = vm.runInContext(`renderSetup(${JSON.stringify(settings)})`, context);
+  assert.doesNotMatch(webHtml, /nativeDetectionTitle|nativeAction=detection-settings/);
+
+  context.window.billeteraNativeDetection = true;
+  const initialSetupHtml = vm.runInContext(`renderSetup(${JSON.stringify(settings)})`, context);
+  assert.doesNotMatch(initialSetupHtml, /nativeDetectionTitle|nativeAction=detection-settings/);
+
+  vm.runInContext(`state = ${JSON.stringify(settings)}`, context);
+  const androidHtml = vm.runInContext(`renderSetup(${JSON.stringify(settings)})`, context);
+  assert.match(androidHtml, /<h3 id="nativeDetectionTitle">Detección de compras<\/h3>/);
+  assert.match(androidHtml, /href="\.\/\?nativeAction=detection-settings"/);
+  assert.match(androidHtml, /Administrar detección/);
+});
+
 test('service worker uses a new shell cache for the wallet redesign', () => {
   const serviceWorker = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
   const storageTest = fs.readFileSync(path.join(root, 'tests', 'storage.test.html'), 'utf8');

@@ -45,6 +45,32 @@ test('external launcher drops incoming data; receiver can only open the review s
   assert.match(receiver, /ExpenseNotifications\.loadCapture\(context, captureId\)/);
 });
 
+test('notification controls are in Settings and native navigation is narrowly validated', () => {
+  const main = source('MainActivity.java');
+  const listener = source('ExpenseNotificationListener.java');
+  const onCreate = main.slice(main.indexOf('protected void onCreate'), main.indexOf('protected void onResume'));
+  const screen = main.slice(main.indexOf('private void buildScreen()'), main.indexOf('private boolean isTrustedAppUrl'));
+  const settingsRequest = main.slice(main.indexOf('private boolean isDetectionSettingsRequest'), main.indexOf('private void showDetectionSettings'));
+
+  assert.doesNotMatch(onCreate, /AlertDialog|hasNotificationAccess/);
+  assert.match(screen, /webView = new WebView\(this\)/);
+  assert.equal((screen.match(/root\.addView\(/g) || []).length, 1);
+  assert.doesNotMatch(screen, /Detección de compras|Configurar acceso a notificaciones|Apps que pueden generar avisos/);
+  assert.match(main, /window\.billeteraNativeDetection = true/);
+  assert.doesNotMatch(main, /addJavascriptInterface/);
+  assert.match(settingsRequest, /request\.isForMainFrame\(\)/);
+  assert.match(settingsRequest, /isTrustedAppUrl\(uri\)/);
+  assert.match(settingsRequest, /DETECTION_SETTINGS_QUERY\.equals\(uri\.getQuery\(\)\)/);
+  assert.match(main, /DETECTION_SETTINGS_QUERY = "nativeAction=detection-settings"/);
+
+  for (const provider of ['Nequi', 'Bancolombia', 'Nu', 'Google Wallet']) {
+    assert.ok(main.includes(`"${provider}"`));
+  }
+  assert.match(main, /getSharedPreferences\(PREFS, MODE_PRIVATE\)\.edit\(\)/);
+  assert.match(listener, /private static final String PREFS = "billetera_detection"/);
+  assert.match(listener, /getSharedPreferences\(PREFS, MODE_PRIVATE\)/);
+});
+
 test('notification source is package-allowlisted and each write requires expense review', () => {
   const providers = source('ExpenseSources.java');
   const listener = source('ExpenseNotificationListener.java');

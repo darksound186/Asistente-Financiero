@@ -38,9 +38,11 @@ public final class MainActivity extends Activity {
     private static final Pattern CAPTURE_ID = Pattern.compile("^[a-f0-9]{64}$");
     private static final String APP_URL = "https://darksound186.github.io/Asistente-Financiero/";
     private static final String APP_HOST = "darksound186.github.io";
+    private static final String APP_PATH = "/Asistente-Financiero/";
+    private static final String DETECTION_SETTINGS_QUERY = "nativeAction=detection-settings";
     private static final String PREFS = "billetera_detection";
     private static final String[] PROVIDERS = {"Nequi", "Bancolombia", "Nu", "Google Wallet"};
-    private TextView status;
+    private TextView detectionStatus;
     private WebView webView;
     private JSONObject pendingExpense;
 
@@ -53,14 +55,6 @@ public final class MainActivity extends Activity {
         buildScreen();
         if (webView != null) {
             webView.loadUrl(APP_URL);
-        }
-        if (!hasNotificationAccess()) {
-            new android.app.AlertDialog.Builder(this)
-                    .setTitle("Activa la detección de compras")
-                    .setMessage("Android necesita tu permiso para que Billetera lea las notificaciones seleccionadas. El contenido se procesa en este dispositivo y no se envía a un servidor.")
-                    .setNegativeButton("Ahora no", null)
-                    .setPositiveButton("Configurar", (dialog, which) -> openNotificationAccessSettings())
-                    .show();
         }
     }
 
@@ -83,52 +77,6 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BACKGROUND);
 
-        LinearLayout controls = new LinearLayout(this);
-        controls.setOrientation(LinearLayout.VERTICAL);
-        controls.setBackgroundColor(SURFACE);
-        controls.setPadding(dp(16), dp(12), dp(16), dp(8));
-
-        TextView title = new TextView(this);
-        title.setText("Detección de compras");
-        title.setTextSize(20);
-        title.setTextColor(TEXT);
-        controls.addView(title);
-
-        status = new TextView(this);
-        status.setTextSize(14);
-        status.setPadding(0, dp(6), 0, dp(6));
-        controls.addView(status);
-
-        Button permissionButton = new Button(this);
-        permissionButton.setText("Configurar acceso a notificaciones");
-        permissionButton.setOnClickListener(view -> requestDetectionPermissions());
-        controls.addView(permissionButton);
-
-        TextView providerTitle = new TextView(this);
-        providerTitle.setText("Apps que pueden generar avisos");
-        providerTitle.setTextSize(14);
-        providerTitle.setTextColor(TEXT);
-        providerTitle.setPadding(0, dp(6), 0, 0);
-        controls.addView(providerTitle);
-        for (String provider : PROVIDERS) {
-            CheckBox checkBox = new CheckBox(this);
-            checkBox.setText(provider);
-            checkBox.setTextColor(TEXT);
-            checkBox.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(providerKey(provider), true));
-            checkBox.setOnCheckedChangeListener((button, checked) ->
-                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(providerKey(provider), checked).apply());
-            controls.addView(checkBox);
-        }
-
-        TextView privacy = new TextView(this);
-        privacy.setText("Solo se revisan avisos de estas apps que parezcan compras. No se leen mensajes ni se guardan notificaciones ajenas.");
-        privacy.setTextSize(12);
-        privacy.setTextColor(MUTED);
-        privacy.setPadding(0, dp(4), 0, dp(4));
-        controls.addView(privacy);
-        root.addView(controls, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -140,19 +88,91 @@ public final class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                if ("https".equals(uri.getScheme()) && APP_HOST.equals(uri.getHost())) return false;
+                if (isDetectionSettingsRequest(request)) {
+                    showDetectionSettings();
+                    return true;
+                }
+                if (isTrustedAppUrl(uri)) return false;
                 startActivity(new Intent(Intent.ACTION_VIEW, uri));
                 return true;
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
-                deliverPendingExpense();
+                Uri uri = Uri.parse(url);
+                if (isTrustedAppUrl(uri)) {
+                    view.evaluateJavascript("window.billeteraNativeDetection = true;", null);
+                    deliverPendingExpense();
+                }
             }
         });
         root.addView(webView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
+    }
+
+    private boolean isTrustedAppUrl(Uri uri) {
+        return "https".equals(uri.getScheme()) &&
+                APP_HOST.equals(uri.getHost()) &&
+                uri.getUserInfo() == null &&
+                (uri.getPort() == -1 || uri.getPort() == 443) &&
+                APP_PATH.equals(uri.getPath());
+    }
+
+    private boolean isDetectionSettingsRequest(WebResourceRequest request) {
+        Uri uri = request.getUrl();
+        return request.isForMainFrame() &&
+                isTrustedAppUrl(uri) &&
+                DETECTION_SETTINGS_QUERY.equals(uri.getQuery());
+    }
+
+    private void showDetectionSettings() {
+        LinearLayout controls = new LinearLayout(this);
+        controls.setOrientation(LinearLayout.VERTICAL);
+        controls.setBackgroundColor(SURFACE);
+        controls.setPadding(dp(20), dp(8), dp(20), dp(8));
+
+        detectionStatus = new TextView(this);
+        detectionStatus.setTextSize(14);
+        detectionStatus.setPadding(0, 0, 0, dp(8));
+        controls.addView(detectionStatus);
+        updateStatus();
+
+        Button permissionButton = new Button(this);
+        permissionButton.setText("Configurar acceso a notificaciones");
+        permissionButton.setOnClickListener(view -> requestDetectionPermissions());
+        controls.addView(permissionButton);
+
+        TextView providerTitle = new TextView(this);
+        providerTitle.setText("Aplicaciones permitidas");
+        providerTitle.setTextSize(14);
+        providerTitle.setTextColor(TEXT);
+        providerTitle.setPadding(0, dp(8), 0, dp(2));
+        controls.addView(providerTitle);
+        for (String provider : PROVIDERS) {
+            CheckBox checkBox = new CheckBox(this);
+            checkBox.setText(provider);
+            checkBox.setTextColor(TEXT);
+            checkBox.setChecked(getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getBoolean(providerKey(provider), true));
+            checkBox.setOnCheckedChangeListener((button, checked) ->
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                            .putBoolean(providerKey(provider), checked).apply());
+            controls.addView(checkBox);
+        }
+
+        TextView privacy = new TextView(this);
+        privacy.setText("Las notificaciones se revisan localmente. Solo se consideran estas aplicaciones.");
+        privacy.setTextSize(12);
+        privacy.setTextColor(MUTED);
+        privacy.setPadding(0, dp(4), 0, 0);
+        controls.addView(privacy);
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Detección de compras")
+                .setView(controls)
+                .setNegativeButton("Cerrar", null)
+                .show();
     }
 
     private void requestDetectionPermissions() {
@@ -169,7 +189,7 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_NOTIFICATIONS &&
                 grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            openNotificationAccessSettings();
+            if (!hasNotificationAccess()) openNotificationAccessSettings();
         } else if (requestCode == REQUEST_NOTIFICATIONS) {
             Toast.makeText(this, "Sin permiso para mostrar avisos de compras.", Toast.LENGTH_LONG).show();
         }
@@ -185,12 +205,12 @@ public final class MainActivity extends Activity {
     }
 
     private void updateStatus() {
-        if (status == null) return;
+        if (detectionStatus == null) return;
         boolean enabled = hasNotificationAccess();
-        status.setText(enabled
+        detectionStatus.setText(enabled
                 ? "Detección activa. Es posible que debas habilitar también las notificaciones de Billetera."
                 : "Detección inactiva: autoriza el acceso especial de notificaciones de Android.");
-        status.setTextColor(enabled ? ACCENT : MUTED);
+        detectionStatus.setTextColor(enabled ? ACCENT : MUTED);
     }
 
     private void deliverPendingExpense() {

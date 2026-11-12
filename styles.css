@@ -1448,6 +1448,24 @@ h1 {
   margin: 8px 0;
 }
 
+.native-detection-settings {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.native-detection-settings p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.native-detection-settings .btn {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+
 .mobile-nav {
   display: none;
   position: fixed;

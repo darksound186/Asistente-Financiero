@@ -718,6 +718,13 @@ function renderSetup(prefill){
 
   const salaryLabelText = freq === 'mensual' ? 'Sueldo neto mensual' : 'Sueldo neto por quincena';
   const cutoffLabelText = freq === 'mensual' || freq === 'independiente' ? 'Día límite o cierre de mes' : 'Día de corte de la primera quincena';
+  const nativeDetectionSettings = state && window.billeteraNativeDetection === true ? `
+      <section class="native-detection-settings" aria-labelledby="nativeDetectionTitle">
+        <h3 id="nativeDetectionTitle">Detección de compras</h3>
+        <p>Administra el acceso a notificaciones y las aplicaciones que Billetera revisa localmente en Android.</p>
+        <a class="btn btn-blue" href="./?nativeAction=detection-settings">Administrar detección</a>
+      </section>
+  ` : '';
 
   return `
     <div class="panel" id="setupPanel">
@@ -760,6 +767,7 @@ function renderSetup(prefill){
         <input type="file" id="importBackupFile" accept="application/json,.json">
         <div class="err" id="backupErr" role="alert" aria-live="polite"></div>
       </section>
+      ${nativeDetectionSettings}
     </div>
   `;
 }
